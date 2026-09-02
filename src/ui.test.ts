@@ -165,17 +165,17 @@ describe("farm chrome", () => {
     expect(root.querySelector("[data-overflow]")?.getAttribute("aria-label")).toBe("Menu");
   });
 
-  it("attributes the live drop income so an idle farm does not look like auto-play", () => {
+  it("keeps an idle farm at 0/s and still shows the drop chip", () => {
     const root = document.createElement("div");
     const state = newGame();
     renderApp(root, state, 1, farm, null, noop, 1);
     const chip = root.querySelector("#drop") as HTMLButtonElement;
     expect(chip).toBeTruthy();
-    expect(chip.textContent).toMatch(/Drop \u00d7[\d.]+ \u00b7 \+[\d.]+/);
+    expect(chip.textContent).toMatch(/Drop \u00d7[\d.]+/);
+    expect(chip.textContent).not.toMatch(/\+/);
     expect(chip.dataset.sheetOpen).toBe("event");
-    // Every row is idle, so the wallet rate must be explained by the drop.
     expect(root.querySelector("[data-row='0'] [data-row-vps]")?.textContent).toBe("idle");
-    expect(root.querySelector("#vps")?.textContent).not.toBe("0/s");
+    expect(root.querySelector("#vps")?.textContent).toBe("0/s");
   });
 
   it("keeps the rare jobs out of the dock and inside one menu", () => {

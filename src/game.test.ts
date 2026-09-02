@@ -602,6 +602,13 @@ describe("event + pass", () => {
     expect(live.event.clout).toBeGreaterThan(0);
   });
 
+  it("does not pay drop extra while every bar is idle", () => {
+    const state = newGame();
+    tick(state, 2, undefined, 1);
+    expect(state.views).toBe(0);
+    expect(state.viewsThisRun).toBe(0);
+  });
+
   it("persists event claims, clout, and pass unlocks", () => {
     const state = newGame();
     const now = 1;

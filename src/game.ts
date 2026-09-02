@@ -512,7 +512,7 @@ export function globalViewsPerSec(state: GameState, now = 0): number {
   for (const planet of unlockedPlanets(state)) {
     total += viewsPerSec(state, planet);
   }
-  if (now > 0) {
+  if (now > 0 && total > 0) {
     const live = currentEvent(now);
     total *= live.def.bonusMult;
     total += extraEventVps(totalMult(state), live.def);
@@ -541,6 +541,7 @@ export function syncEvent(state: GameState, now: number): LiveEvent {
 export function tick(state: GameState, dtSec: number, session?: TapSession, now = 0): number {
   if (dtSec <= 0) return 0;
   let earned = 0;
+  let farmLive = false;
   const evMult = now > 0 ? currentEvent(now).def.bonusMult : 1;
   for (const planet of unlockedPlanets(state)) {
     const defs = BUSINESSES[planet];
@@ -552,6 +553,7 @@ export function tick(state: GameState, dtSec: number, session?: TapSession, now 
       // tapped for and then stops, which is the whole point of hiring anyone.
       if (row.manager) row.running = true;
       if (!row.running) continue;
+      farmLive = true;
       const cycle = cycleSecFor(defs[i].cycleSec, row.owned, state.shop?.tempo ?? 0);
       row.progress += dtSec / cycle;
       if (row.progress >= 1) {
@@ -567,9 +569,11 @@ export function tick(state: GameState, dtSec: number, session?: TapSession, now 
   }
   if (now > 0) {
     const live = syncEvent(state, now);
-    const extra = extraEventVps(totalMult(state), live.def) * dtSec;
-    credit(state, extra);
-    earned += extra;
+    if (farmLive) {
+      const extra = extraEventVps(totalMult(state), live.def) * dtSec;
+      credit(state, extra);
+      earned += extra;
+    }
     if (earned > 0) state.event.clout += earned / CLOUT_PER_VIEWS;
   }
   return earned;

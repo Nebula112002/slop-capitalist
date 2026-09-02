@@ -39,6 +39,7 @@ import {
   timeToRankSec,
   totalMult,
   unlockedPlanets,
+  viewsPerSec,
   type BuyMode,
   type BuyQuote,
   type FarmAdvice,
@@ -323,16 +324,14 @@ function menuHot(state: GameState, now: number): boolean {
 
 function dropText(state: GameState, now: number): string {
   const live = currentEvent(now);
-  return `Drop \u00d7${live.def.bonusMult} \u00b7 +${formatNum(extraEventVps(totalMult(state), live.def))}/s`;
+  const extra = extraEventVps(totalMult(state), live.def);
+  if (viewsPerSec(state) <= 0) return `Drop \u00d7${live.def.bonusMult}`;
+  return `Drop \u00d7${live.def.bonusMult} \u00b7 +${formatNum(extra)}/s`;
 }
 
-/**
- * The live drop multiplies every farm and adds income of its own, so a farm
- * with nothing running still earns. Without this the wallet looks like the game
- * is playing itself.
- */
+/** Live drop. The \u00d7 hits bars you actually run. Extra does not pay an idle farm. */
 function dropChip(state: GameState, now: number): string {
-  return `<button class="hud-chip" data-sheet-open="event" id="drop" title="Live drop. Tap for the details.">${dropText(state, now)}</button>`;
+  return `<button class="hud-chip" data-sheet-open="event" id="drop" title="Live drop. Boosts bars you post. Idle earns nothing.">${dropText(state, now)}</button>`;
 }
 
 function renderDockActions(state: GameState, buyMode: BuyMode, selected: number, bestMode: boolean): string {
@@ -606,7 +605,7 @@ function renderEvent(state: GameState, now: number): string {
     <p class="sheet-note">${live.def.blurb}</p>
     <dl class="card-stats">
       <div><dt>Farms</dt><dd>${live.def.bonusMult}\u00d7</dd></div>
-      <div><dt>${live.def.extraName}</dt><dd>${formatNum(extraVps)}/s</dd></div>
+      <div><dt>${live.def.extraName}</dt><dd>${formatNum(extraVps)}/s while posting</dd></div>
       <div><dt>Clout</dt><dd>${formatNum(state.event.clout)}</dd></div>
     </dl>
     <button class="buy" data-claim-drop ${claimed ? "disabled" : ""}>
