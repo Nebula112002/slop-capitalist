@@ -182,7 +182,9 @@ Shipped so the game is playable **now**. Do not revert these to get a prettier m
 - [x] Planet switcher sits on the farm title row.
 - [x] Quantity chips hide behind the qty tool. Buy BEST stays the primary action.
 - [x] Mint = primary. Gold = views. Pink qty-active is gone.
-- [x] Tests + Playwright landing → farm path. `npm test && npm run build`.
+- [x] Tests + Playwright landing → farm path. `npm test && npm run build`. Live `:8896` after `.\scripts\start.ps1`.
+
+Playwright on a cleared save (390×844): first paint is landing (not YouTube farm). Continue → 5 farm rows, Buy BEST, no prestige card, no header BEST line, no Algo, qty chips hidden. Mgrs/Drop/Pass keep the list mounted. Slop wordmark returns to landing and keeps the save (`Continue · {views}`).
 
 **Do not change:** `adviseFarm` / `buyBest` scoring, planet unlocks, prestige/algo formulas, save hydrate, port 8896, no-IAP.
 
@@ -229,7 +231,7 @@ Honest leftovers from the live landing → farm play and the screenshot. Fix the
 - **Event drop** is still a one-tap snack. Sheet is better than a tab; the shop is still titles.
 - **Pass** first reward is still a title. Later view packs are still far away.
 - **Managers sheet** is a tall list. Fine. Not as nice as hire-all sitting on the farm with no sheet at all.
-- **Prestige chip** is small. Ready state is a gold edge — easy to miss next to huge Views.
+- **Prestige chip** is small. On a 390px phone it wraps under Views. Ready state is a gold edge — easy to miss next to huge Views.
 - **Inside** dock still grows a Hire button, so the bottom gets busier the moment you Open.
 - **Tip** can still appear on the farm after landing already explained the loop (dismiss once).
 - **Color** is quieter, not silent. Locked chips and SLOW badges still add noise on a late save.

@@ -14,6 +14,7 @@ try {
   notes.push(`first paint: ${land.includes("Continue") && land.includes("New run") ? "landing" : "NOT landing"}`);
   notes.push(`landing bullets: BEST=${land.includes("Buy BEST")} farm=${land.includes("farm is the game")} prestige=${land.includes("Prestige when the chip fills")}`);
   notes.push(`dumped into farm: ${land.includes("YouTube farm")}`);
+  await page.screenshot({ path: "docs/playtest-landing.png", fullPage: true });
 
   await page.getByRole("button", { name: /^Continue/ }).click();
   await page.waitForSelector("[data-buy-best], [data-dismiss-tip]");
@@ -30,6 +31,7 @@ try {
     await page.getByRole("button", { name: "Got it" }).click();
     notes.push("dismissed first-run tip");
   }
+  await page.screenshot({ path: "docs/playtest-home.png", fullPage: true });
 
   const rows = await page.locator("[data-row]").count();
   notes.push(`farm rows visible: ${rows}`);
@@ -88,8 +90,6 @@ try {
   await page.locator("[data-overflow]").click();
   const settings = await page.locator("body").innerText();
   notes.push(`settings: mute=${settings.includes("Mute")} export=${settings.includes("Copy export")} recap=${settings.includes("recap")}`);
-
-  await page.screenshot({ path: "docs/playtest-home.png", fullPage: true });
 } catch (err) {
   notes.push(`ERROR: ${err.message}`);
   await page.screenshot({ path: "docs/playtest-fail.png", fullPage: true }).catch(() => {});
