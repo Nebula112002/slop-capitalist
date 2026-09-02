@@ -71,6 +71,44 @@ describe("economy", () => {
     const hit = cycleIncome("youtube", 0, 25, 1);
     expect(hit).toBeGreaterThan(base * 2);
   });
+
+  it("keeps the first clip cheap and makes later farms a real save", () => {
+    const payback = (planet: "youtube" | "tiktok", index: number): number => {
+      const def = BUSINESSES[planet][index];
+      return def.baseCost / potentialVps(planet, index, 1, 1, 0);
+    };
+    expect(BUSINESSES.youtube[0].costMult).toBeGreaterThanOrEqual(1.12);
+    expect(payback("youtube", 0)).toBeLessThan(5);
+    expect(payback("youtube", 1)).toBeGreaterThan(60);
+    expect(payback("youtube", 2)).toBeGreaterThan(10 * 60);
+    expect(payback("tiktok", 0)).toBeGreaterThan(60);
+    expect(payback("tiktok", 2)).toBeGreaterThan(30 * 60);
+  });
+
+  it("takes a real session to prestige even with perfect tapping", () => {
+    const state = newGame(0);
+    let sec = 0;
+    const cap = 90 * 60;
+    while (sec < cap && !canPrestige(state)) {
+      for (let i = 0; i < 5; i++) {
+        const row = state.businesses.youtube[i];
+        if (row.owned > 0 && !row.manager && !row.running) startCycle(state, i);
+      }
+      const vps = viewsPerSec(state);
+      const managed = state.businesses.youtube.every((row) => row.owned <= 0 || row.manager);
+      const dt = managed && vps > 0
+        ? Math.min(20, Math.max(0.5, (state.nextPrestigeAt - state.viewsThisRun) / vps / 4))
+        : 0.5;
+      tick(state, dt);
+      buyBest(state, "rank") || buyBest(state, 1);
+      hireAllAffordable(state);
+      sec += dt;
+    }
+    expect(canPrestige(state)).toBe(true);
+    expect(sec).toBeGreaterThan(10 * 60);
+    expect(sec).toBeLessThan(cap);
+    expect(state.businesses.youtube[4].owned).toBe(0);
+  });
 });
 
 describe("buy bar", () => {
@@ -530,7 +568,7 @@ describe("managers from any planet", () => {
     const state = newGame();
     state.tiktokUnlocked = true;
     state.businesses.tiktok[0].owned = 1;
-    state.views = 51_000_000;
+    state.views = BUSINESSES.tiktok[0].managerCost + BUSINESSES.youtube[0].managerCost;
     state.planet = "youtube";
     expect(hireManager(state, 0, "tiktok")).toBe(true);
     expect(state.businesses.tiktok[0].manager).toBe(true);
