@@ -37,6 +37,7 @@ import {
   type TapSession,
 } from "./game";
 import {
+  flashBuy,
   flashNudge,
   hasSaveProgress,
   patchMeters,
@@ -113,7 +114,7 @@ function bootView(game: GameState, mode: BuyMode): UiView {
 
 function signIn(raw: string): boolean {
   if (!isValidUsername(raw)) {
-    showToast("Pick a username. Letters, numbers, spaces.");
+    showToast("Names are letters, numbers, spaces, - and _.");
     return false;
   }
   const next = normalizeUsername(raw);
@@ -130,11 +131,15 @@ function signIn(raw: string): boolean {
   buyMode = 1;
   taps = newTapSession();
   resetFlavorSession();
-  persistRoute("landing");
-  view = landingView(state, buyMode);
-  sheet = null;
+  // A name with something to lose stops on the pitch so Continue can prove
+  // nothing was wiped. A brand-new name has no save to reassure them about.
+  const fresh = !hasSaveProgress(state);
+  persistRoute(fresh ? "farm" : "landing");
+  view = fresh ? homeView(state, buyMode) : landingView(state, buyMode);
+  sheet = fresh && state.pendingChest ? "chest" : null;
   persistState();
   rebuild();
+  if (fresh) showToast(`Welcome, ${currentUser}. Post the first cursed short.`);
   return true;
 }
 
@@ -170,7 +175,9 @@ const handlers: UiHandlers = {
     view = { ...view, selected: result.index };
     rebuild();
     playJuice("buy", state.muted);
+    flashBuy(root, result.index, result.count);
     if (mark !== null && ownedNow >= mark) {
+      playJuice("rank", state.muted);
       showToast(pickFlavor("milestone", { name: def.name, mark }));
     } else if (result.count >= 10) {
       showToast(pickFlavor("buy-bulk", { n: result.count, name: def.name }));
@@ -186,7 +193,9 @@ const handlers: UiHandlers = {
       persistState();
       rebuild();
       playJuice("buy", state.muted);
+      flashBuy(root, index, n);
       if (mark !== null && row.owned >= mark) {
+        playJuice("rank", state.muted);
         showToast(pickFlavor("milestone", { name: def.name, mark }));
       } else if (n >= 10) {
         showToast(pickFlavor("buy-bulk", { n, name: def.name }));
@@ -278,7 +287,6 @@ const handlers: UiHandlers = {
   },
   onBuyMode(mode) {
     buyMode = mode;
-    view = { ...view, bestMode: false };
     rebuild();
   },
   onBestMode() {
@@ -298,7 +306,7 @@ const handlers: UiHandlers = {
     rebuild();
   },
   onOverflow() {
-    sheet = "settings";
+    sheet = "menu";
     rebuild();
   },
   onReset() {
@@ -463,6 +471,17 @@ function frame(now: number): void {
 requestAnimationFrame(frame);
 
 window.addEventListener("beforeunload", () => persistState());
+
+window.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || event.defaultPrevented) return;
+  const target = event.target as HTMLElement | null;
+  if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return;
+  if (sheet) {
+    handlers.onSheetClose();
+    return;
+  }
+  if (view.screen === "inside") handlers.onFarm();
+});
 
 if (import.meta.env.DEV) {
   Object.assign(window, {

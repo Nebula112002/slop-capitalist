@@ -3,6 +3,7 @@ import {
   EVENT_SHOP,
   HYPE_SHOP,
   IDLE_CHEST_MAX_RANK,
+  MIN_CYCLE_SEC,
   PASS_TIERS,
   PLANETS,
   UI_ROUTE_KEY,
@@ -46,8 +47,14 @@ import {
 import { chestUpgradeCost } from "./idle-chest";
 import { uiKeyFor } from "./users";
 
-export type MoreSheet = "managers" | "event" | "pass";
-export type DockTab = MoreSheet | "buy";
+export type MoreSheet =
+  | "menu"
+  | "managers"
+  | "event"
+  | "pass"
+  | "settings"
+  | "recap"
+  | "chest";
 
 export type UiView = {
   screen: "landing" | "outside" | "inside";
@@ -55,15 +62,7 @@ export type UiView = {
   bestMode: boolean;
 };
 
-export type UiSheet =
-  | "prestige"
-  | "algo"
-  | "settings"
-  | "chest"
-  | "recap"
-  | "import"
-  | MoreSheet
-  | null;
+export type UiSheet = "prestige" | "algo" | "import" | MoreSheet | null;
 
 export type UiRoute = "landing" | "farm";
 
@@ -169,7 +168,13 @@ function usernameActive(current: string, name: string): boolean {
 function chipLabel(mode: BuyMode): string {
   if (mode === "max") return "MAX";
   if (mode === "rank") return "RANK";
-  return String(mode);
+  return `\u00d7${mode}`;
+}
+
+function chipTitle(mode: BuyMode): string {
+  if (mode === "max") return "Buy everything you can afford";
+  if (mode === "rank") return "Buy up to the next \u00d72 rank";
+  return `Buy ${mode} at a time`;
 }
 
 function planetShort(id: PlanetId): string {
@@ -178,80 +183,124 @@ function planetShort(id: PlanetId): string {
   return "SIM";
 }
 
-function goalCopy(state: GameState): { title: string; detail: string; ready: boolean; pct: number } {
+function planetName(id: PlanetId): string {
+  return PLANETS.find((planet) => planet.id === id)?.name ?? id;
+}
+
+type Goal = {
+  title: string;
+  ready: boolean;
+  pct: number;
+  chip: string;
+  aria: string;
+};
+
+function goalCopy(state: GameState): Goal {
   const ready = canPrestige(state);
   const pct = Math.min(100, (state.viewsThisRun / state.nextPrestigeAt) * 100);
   const title = state.simulationUnlocked
     ? "Go even more viral"
     : `Unlock ${nextPlanetName(state)}`;
-  const gain = prestigeGain(state.viewsThisRun, state.prestigeCount);
-  const detail = ready
-    ? `Reset every farm. Bank ${gain.toFixed(1)} Hype. Planets stay unlocked.`
-    : `${formatNum(state.viewsThisRun)} / ${formatNum(state.nextPrestigeAt)}`;
-  return { title, detail, ready, pct };
+  // The sub-label names the bar the run has to clear. The meter carries progress.
+  const chip = ready ? "Ready" : formatNum(state.nextPrestigeAt);
+  const aria = ready
+    ? "Prestige ready. Open the prestige sheet."
+    : `Prestige at ${Math.floor(pct)} percent of ${formatNum(state.nextPrestigeAt)} views this run.`;
+  return { title, ready, pct, chip, aria };
 }
 
 export function buyButtonText(quote: BuyQuote, mode: BuyMode, name?: string): string {
-  if (quote.locked) return "Unlock previous first";
+  if (quote.locked) return "Unlock the row above first";
   const cost = formatNum(quote.cost);
   const who = name ? ` ${name}` : "";
   if (mode === "rank" && quote.gap !== null) {
     if (quote.count > 0 && quote.count < quote.gap) {
-      return `Rank ${quote.count}/${quote.gap}${who} · ${cost}`;
+      return `Rank ${quote.count}/${quote.gap}${who} \u00b7 ${cost}`;
     }
-    return `Rank ${quote.gap}${who} · ${cost}`;
+    return `Rank ${quote.gap}${who} \u00b7 ${cost}`;
   }
-  if (name) return `Buy ${quote.count}× ${name} · ${cost}`;
-  return `Buy ${quote.count} · ${cost}`;
+  if (name) return `Buy ${quote.count}\u00d7 ${name} \u00b7 ${cost}`;
+  return `Buy ${quote.count} \u00b7 ${cost}`;
 }
 
 export function bestButtonText(state: GameState, mode: BuyMode, advice: FarmAdvice): string {
   if (advice.bestIndex === null) return "Nothing to buy";
   const def = BUSINESSES[state.planet][advice.bestIndex];
   const quote = quotedBuy(state, advice.bestIndex, mode);
-  return `Buy BEST · ${quote.count}× ${def.name} · ${formatNum(quote.cost)}`;
+  return `Buy BEST \u00b7 ${quote.count}\u00d7 ${def.name} \u00b7 ${formatNum(quote.cost)}`;
 }
 
-function renderPlanetChips(state: GameState): string {
-  return PLANETS.map((planet) => {
+/** One muted line under the chips. Teaches the chips; never repeats the BEST winner. */
+export function dockHintText(state: GameState, mode: BuyMode, bestMode: boolean): string {
+  if (bestMode) {
+    if (mode === "rank") {
+      return "RANK BEST is the best step toward a rank, not the selected row.";
+    }
+    if (adviseFarm(state, mode).bestIndex === null) {
+      return "Nothing is affordable yet. The advisor will not pretend otherwise.";
+    }
+    return "BEST spends on the most views per second per view spent. Ties go to the top row.";
+  }
+  if (mode === "rank") return "RANK buys up to the next \u00d72 rank. Partial is fine.";
+  if (mode === "max") return "MAX spends every view you have on this row.";
+  return "MAX spends it all. RANK stops at the next \u00d72.";
+}
+
+function renderPlanets(state: GameState): string {
+  const chips = PLANETS.map((planet) => {
     const locked = !planetUnlocked(state, planet.id);
     const active = state.planet === planet.id;
     return `
       <button
         class="planet ${active ? "is-on" : ""} ${locked ? "is-locked" : ""}"
         data-planet="${planet.id}"
+        aria-pressed="${active ? "true" : "false"}"
         ${locked ? "disabled" : ""}
         title="${locked ? planet.unlock : planet.name}"
-      >${planetShort(planet.id)}</button>
+      ><span aria-hidden="true">${planetShort(planet.id)}</span><span class="sr-only">${planet.name}</span></button>
     `;
   }).join("");
+  return `<div class="planets" role="group" aria-label="Planets">${chips}</div>`;
 }
 
-function renderBuyChips(buyMode: BuyMode, bestMode: boolean): string {
+function renderChips(state: GameState, buyMode: BuyMode, bestMode: boolean): string {
+  // Quantity and BEST are different axes: the chip still says how many the
+  // advisor will buy, so it stays lit while BEST picks the row.
   const qty = BUY_CHIPS.map(
     (mode) => `
-      <button class="chip ${!bestMode && buyMode === mode ? "is-on" : ""}" data-buymode="${mode}" title="${mode === "rank" ? "Buy up to the next rank" : `Buy ${chipLabel(mode)}`}">
-        ${chipLabel(mode)}
-      </button>
+      <button
+        class="chip ${buyMode === mode ? "is-on" : ""}"
+        data-buymode="${mode}"
+        aria-pressed="${buyMode === mode ? "true" : "false"}"
+        title="${chipTitle(mode)}"
+      >${chipLabel(mode)}</button>
     `,
   ).join("");
-  return `<span class="dock-label">Qty</span>${qty}
-      <button class="chip ${bestMode ? "is-on" : ""}" data-best-mode title="Advisor spends on the BEST row">BEST</button>`;
+  const advice = bestMode ? adviseFarm(state, buyMode) : null;
+  const dead = advice !== null && advice.bestIndex === null;
+  return `
+    <div class="dock-modes">
+      <div class="qty-rail" role="group" aria-label="How many to buy">${qty}</div>
+      <button
+        class="chip chip-best ${bestMode ? "is-on" : ""} ${dead ? "is-dead" : ""}"
+        data-best-mode
+        aria-pressed="${bestMode ? "true" : "false"}"
+        title="Let the advisor pick the row"
+      >BEST</button>
+    </div>
+    <p class="dock-hint" data-dock-hint>${dockHintText(state, buyMode, bestMode)}</p>
+  `;
 }
 
-function dockHint(buyMode: BuyMode, bestMode: boolean): string {
-  if (buyMode !== "rank") return "";
-  return bestMode
-    ? `<p class="dock-hint">RANK BEST is the best step toward a rank, not the selected row.</p>`
-    : `<p class="dock-hint">RANK buys up to the next x2. Partial is fine. BEST still picks the farm.</p>`;
-}
-
+/**
+ * Stays in the DOM so it can appear the second a manager becomes affordable,
+ * but it is hidden rather than greyed. A dead grey button reads as broken.
+ */
 function farmHireAll(state: GameState): string {
   const slots = managerSlots(state);
-  const open = slots.some((slot) => slot.owned > 0 && !slot.hired);
-  if (!open) return "";
+  if (!slots.some((slot) => slot.owned > 0 && !slot.hired)) return "";
   const hot = slots.some((slot) => slot.affordable);
-  return `<button class="ghost-lite farm-hire" data-hire-all ${hot ? "" : "disabled"}>Hire all</button>`;
+  return `<button class="pill pill-hire is-hot" data-hire-all ${hot ? "" : "hidden"}>Hire all</button>`;
 }
 
 function dropHot(state: GameState, now: number): boolean {
@@ -267,13 +316,13 @@ function mgrsHot(state: GameState): boolean {
   return managerSlots(state).some((slot) => slot.affordable);
 }
 
-function renderDockActions(
-  state: GameState,
-  buyMode: BuyMode,
-  selected: number,
-  screen: UiView["screen"],
-  bestMode: boolean,
-): string {
+function menuHot(state: GameState, now: number): boolean {
+  return (
+    mgrsHot(state) || dropHot(state, now) || passHot(state) || Boolean(state.pendingChest)
+  );
+}
+
+function renderDockActions(state: GameState, buyMode: BuyMode, selected: number, bestMode: boolean): string {
   if (bestMode) {
     const advice = adviseFarm(state, buyMode);
     return `
@@ -286,77 +335,126 @@ function renderDockActions(
   const row = state.businesses[state.planet][selected];
   if (!def || !row) return "";
   const quote = quotedBuy(state, selected, buyMode);
-  const hire =
-    screen === "inside"
-      ? `
-    <button class="mgr" data-dock-mgr ${row.manager || row.owned <= 0 || state.views < managerPrice(state, state.planet, selected) ? "disabled" : ""}>
-      ${row.manager ? "Managed" : `${def.managerName} · ${formatNum(managerPrice(state, state.planet, selected))}`}
-    </button>`
-      : "";
   return `
     <button class="buy" data-dock-buy ${quote.canBuy ? "" : "disabled"}>
       ${buyButtonText(quote, buyMode, def.name)}
     </button>
-    ${hire}
   `;
 }
 
-function renderOutside(state: GameState, buyMode: BuyMode, selected: number): string {
+/**
+ * Under ~0.4s a per-cycle bar is a strobe, not information. Those rows show a
+ * steady running state instead. The economy is untouched; only the read changes.
+ */
+const STROBE_SEC = 0.4;
+
+function barRun(cycleSec: number): boolean {
+  return cycleSec <= STROBE_SEC;
+}
+
+function cycleCopy(cycleSec: number): string {
+  return cycleSec <= MIN_CYCLE_SEC + 1e-6 ? `${formatCycle(cycleSec)} min` : formatCycle(cycleSec);
+}
+
+function rankCopy(state: GameState, index: number, owned: number): string {
+  const next = nextMilestone(owned);
+  if (next === null) return "Ranks maxed";
+  const eta = timeToRankSec(state, index);
+  const gap = next - owned;
+  const when = eta !== null ? ` \u00b7 ~${formatTime(eta * 1000)}` : "";
+  return `\u00d72 at ${next} \u00b7 ${formatNum(gap)} to go${when}`;
+}
+
+function badgeTitle(badge: string): string {
+  if (badge === "best") return "Most views per second per view spent right now";
+  if (badge === "lock") return "Next row to unlock";
+  return "Slowest climb to its next rank";
+}
+
+function renderRows(state: GameState, buyMode: BuyMode, selected: number): string {
   const defs = BUSINESSES[state.planet];
   const rows = state.businesses[state.planet];
   const advice = adviseFarm(state, buyMode);
-  const planetName = PLANETS.find((p) => p.id === state.planet)?.name ?? state.planet;
+  const cards = defs
+    .map((def, index) => {
+      const row = rows[index];
+      const owns = row.owned > 0;
+      const locked = !owns && index > 0 && rows[index - 1].owned <= 0;
+      const cycle = cycleSecFor(def.cycleSec, row.owned, state.shop?.tempo ?? 0);
+      const vps = rowVps(state, index);
+      const badge = advice.badges[index];
+      const on = selected === index;
+      const fill = owns ? Math.min(100, row.progress * 100) : 0;
+      const run = barRun(cycle) && vps > 0;
+      const live = owns
+        ? `
+          <div class="frow-live">
+            <i class="frow-cycle ${run ? "is-running" : ""}" data-row-bar aria-hidden="true"><b data-row-fill style="width:${run ? 100 : fill}%"></b></i>
+            <span class="frow-vps" data-row-vps>${vps > 0 ? `${formatNum(vps)}/s` : "idle"}</span>
+          </div>
+          <div class="frow-foot">
+            <span data-row-rank>${rankCopy(state, index, row.owned)}</span>
+            <span class="frow-cyclelabel" data-row-cycle>${cycleCopy(cycle)}</span>
+          </div>`
+        : `
+          <p class="frow-pitch">${def.blurb}</p>
+          <div class="frow-foot">
+            <span>${locked ? "Needs the row above" : `Costs ${formatNum(def.baseCost)} views`}</span>
+            <span class="frow-cyclelabel">${formatCycle(def.cycleSec)}</span>
+          </div>`;
+      return `
+        <div
+          class="frow ${on ? "is-on" : ""} ${owns ? "is-live" : "is-cold"} ${locked ? "is-locked" : ""}"
+          id="frow-${index}"
+          role="option"
+          aria-selected="${on ? "true" : "false"}"
+          tabindex="${on ? "0" : "-1"}"
+          data-row="${index}"
+          data-select="${index}"
+        >
+          <span class="frow-icon" aria-hidden="true">${def.icon}</span>
+          <span class="frow-name">${def.name}</span>
+          <span class="frow-tags">
+            <span class="badge ${badge ? `is-${badge}` : "is-off"}" data-row-badge ${badge ? `title="${badgeTitle(badge)}"` : ""}>${badge ? badge.toUpperCase() : ""}</span>
+            ${owns ? `<span class="frow-owned" data-row-owned>\u00d7${formatNum(row.owned)}</span>` : ""}
+          </span>
+          ${live}
+          ${
+            on
+              ? `<button class="frow-open" data-enter="${index}" tabindex="-1" aria-label="Open ${def.name}" title="Open ${def.name}">\u203a</button>`
+              : ""
+          }
+        </div>
+      `;
+    })
+    .join("");
+  return `<div class="rows" id="biz-list" role="listbox" aria-label="Farms">${cards}</div>`;
+}
+
+function renderOutside(state: GameState, buyMode: BuyMode, selected: number): string {
   return `
-    <div class="farm-head">
-      <strong>${planetName} farm</strong>
+    <div class="farm-bar">
+      <strong class="farm-name">${planetName(state.planet)} farm</strong>
       <div class="farm-tools">
         ${farmHireAll(state)}
-        <nav class="planets" aria-label="Planets">${renderPlanetChips(state)}</nav>
+        ${renderPlanets(state)}
       </div>
     </div>
     ${
-      state.planet === "simulation"
-        ? `<p class="farm-note">Poster planet. The starter pays; next copies are 1T+ views. Scenery until a later retune.</p>`
+      state.pendingChest
+        ? `<button class="strip strip-gold" data-sheet-open="chest">
+            <span class="strip-icon" aria-hidden="true">\u25c9</span>
+            <span class="strip-copy"><strong>Comeback chest</strong><small>+${formatNum(state.pendingChest.views)} views waiting</small></span>
+            <span class="strip-go">Open</span>
+          </button>`
         : ""
     }
-    <div class="rows" id="biz-list">
-      ${defs
-        .map((def, index) => {
-          const row = rows[index];
-          const locked = row.owned <= 0 && index > 0 && rows[index - 1].owned <= 0;
-          const next = nextMilestone(row.owned);
-          const cycle = cycleSecFor(def.cycleSec, row.owned, state.shop?.tempo ?? 0);
-          const vps = rowVps(state, index);
-          const eta = timeToRankSec(state, index);
-          const badge = advice.badges[index];
-          const rankPip = next
-            ? `next rank ${next} (${next - row.owned})${eta !== null ? ` · ~${formatTime(eta * 1000)}` : ""}`
-            : "maxed";
-          return `
-            <article
-              class="row ${locked ? "is-dim" : ""} ${selected === index ? "is-on" : ""}"
-              data-row="${index}"
-              data-select="${index}"
-            >
-              <div class="row-main">
-                <span class="icon">${def.icon}</span>
-                <span class="row-copy">
-                  <strong>${def.name}</strong>
-                  <small>
-                    <span data-row-vps>${vps > 0 ? `${formatNum(vps)}/s` : "—"}</span>
-                    · <span data-row-cycle>${row.owned > 0 ? formatCycle(cycle) : formatCycle(def.cycleSec)}</span>
-                    · <span data-row-rank>${rankPip}</span>
-                  </small>
-                </span>
-                <span class="owned">x${formatNum(row.owned)}</span>
-                <span class="badge ${badge ? `is-${badge}` : "is-off"}" data-row-badge>${badge ? badge.toUpperCase() : ""}</span>
-              </div>
-              <button class="row-open ${selected === index ? "is-on" : ""}" data-enter="${index}" aria-label="Open ${def.name}" title="Open">›</button>
-            </article>
-          `;
-        })
-        .join("")}
-    </div>
+    ${
+      state.planet === "simulation"
+        ? `<p class="farm-note">Poster planet. The starter pays. The next copy is 1T+ views, so this is scenery for now.</p>`
+        : ""
+    }
+    ${renderRows(state, buyMode, selected)}
   `;
 }
 
@@ -368,108 +466,110 @@ function renderInside(state: GameState, selected: number): string {
   const milestone = nextMilestone(row.owned);
   const cycle = cycleSecFor(def.cycleSec, row.owned, state.shop?.tempo ?? 0);
   const pct = Math.min(100, row.progress * 100);
+  const price = managerPrice(state, state.planet, selected);
   const hint = row.manager
-    ? "On autopilot · tap to refresh"
+    ? "On autopilot \u00b7 tap to nudge the bar"
     : row.owned <= 0
       ? "Buy one to start"
       : "Tap to upload";
   return `
-    <div class="inside-head">
-      <button class="texty" data-farm>← Farm</button>
-      <strong>${def.name}</strong>
+    <div class="inside-bar">
+      <button class="pill pill-back" data-farm>\u2190 Farm</button>
+      <span class="inside-count" data-inside-owned>\u00d7${formatNum(row.owned)}</span>
     </div>
-    <article class="biz" data-biz="${selected}" id="biz-list">
-      <button class="run" data-run="${selected}" ${row.owned <= 0 ? "disabled" : ""}>
-        <span class="icon">${def.icon}</span>
-        <span class="run-copy">
+    <article class="card" data-biz="${selected}" id="biz-list">
+      <header class="card-head">
+        <span class="card-icon" aria-hidden="true">${def.icon}</span>
+        <span class="card-copy">
           <strong>${def.name}</strong>
-          <small>${hint}</small>
+          <small data-inside-hint>${hint}</small>
         </span>
-        <span class="owned">x${formatNum(row.owned)}</span>
-      </button>
-      <p class="blurb">${def.blurb}</p>
-      <button class="bar" data-run="${selected}" ${row.owned <= 0 ? "disabled" : ""}>
-        <i style="width:${pct}%"></i>
-        <span>${row.owned > 0 ? `${formatNum(income)} views` : "—"}</span>
+      </header>
+      <button
+        class="bar ${barRun(cycle) && rowVps(state, selected) > 0 ? "is-running" : ""}"
+        data-run="${selected}"
+        data-inside-bar
+        ${row.owned <= 0 ? "disabled" : ""}
+        aria-label="Upload ${def.name}"
+      >
+        <i data-inside-fill style="width:${barRun(cycle) && rowVps(state, selected) > 0 ? 100 : pct}%"></i>
+        <span data-inside-payout>${row.owned > 0 ? `${formatNum(income)} views` : "\u2014"}</span>
         <em class="nudge-pip" hidden>+refresh</em>
       </button>
-      <div class="meta">
-        <span>${milestone ? `Next rank at ${milestone}` : "Milestones maxed"}</span>
-        <span>${row.owned > 0 ? formatCycle(cycle) : formatCycle(def.cycleSec)} cycle</span>
-      </div>
+      <dl class="card-stats">
+        <div><dt>Per second</dt><dd data-inside-vps>${row.owned > 0 ? `${formatNum(rowVps(state, selected))}/s` : "\u2014"}</dd></div>
+        <div><dt>Cycle</dt><dd data-inside-cycle>${cycleCopy(row.owned > 0 ? cycle : def.cycleSec)}</dd></div>
+        <div><dt>Next rank</dt><dd data-inside-rank>${milestone ?? "max"}</dd></div>
+      </dl>
+      <p class="blurb">${def.blurb}</p>
+      <button
+        class="pill pill-wide"
+        data-card-mgr
+        ${row.manager || row.owned <= 0 || state.views < price ? "disabled" : ""}
+      >${row.manager ? "Managed" : `${def.managerName} \u00b7 ${formatNum(price)}`}</button>
     </article>
   `;
 }
 
 function renderManagers(state: GameState): string {
+  const blocks = unlockedPlanets(state)
+    .map((planet) => {
+      const rowsHtml = BUSINESSES[planet]
+        .map((def, index) => {
+          const row = state.businesses[planet][index];
+          const hired = row.manager;
+          const locked = row.owned <= 0;
+          const cost = managerPrice(state, planet, index);
+          const disabled = hired || locked || state.views < cost;
+          return `
+            <article class="list-row ${locked ? "is-dim" : ""} ${hired ? "is-done" : ""}">
+              <span class="list-icon" aria-hidden="true">${def.icon}</span>
+              <span class="list-copy">
+                <strong>${def.name}</strong>
+                <small>${locked ? "Own one first" : hired ? "On autopilot" : def.managerName}</small>
+              </span>
+              <button
+                class="pill"
+                data-hire
+                data-hire-planet="${planet}"
+                data-hire-index="${index}"
+                ${disabled ? "disabled" : ""}
+              >${hired ? "Managed" : `Hire \u00b7 ${formatNum(cost)}`}</button>
+            </article>
+          `;
+        })
+        .join("");
+      return `
+        <section class="list-block" data-mgr-planet="${planet}">
+          <h3>${planetName(planet)}</h3>
+          ${rowsHtml}
+        </section>
+      `;
+    })
+    .join("");
   return `
-    <div class="farm-head">
-      <strong>Managers</strong>
-      <p>Same views. Hire any unlocked farm.</p>
-    </div>
-    <button class="buy" data-hire-all ${managerSlots(state).some((slot) => slot.affordable) ? "" : "disabled"}>
-      Hire all affordable
-    </button>
-    ${unlockedPlanets(state)
-      .map((planet) => {
-        const planetName = PLANETS.find((row) => row.id === planet)?.name ?? planet;
-        return `
-          <section class="mgr-block" data-mgr-planet="${planet}">
-            <h3>${planetName}</h3>
-            ${BUSINESSES[planet]
-              .map((def, index) => {
-                const row = state.businesses[planet][index];
-                const hired = row.manager;
-                const locked = row.owned <= 0;
-                const cost = managerPrice(state, planet, index);
-                const disabled = hired || locked || state.views < cost;
-                return `
-                  <article class="mgr-row ${locked ? "is-dim" : ""}">
-                    <span class="icon">${def.icon}</span>
-                    <span class="row-copy">
-                      <strong>${def.name}</strong>
-                      <small>${locked ? "Own one first" : hired ? "On autopilot" : def.managerName}</small>
-                    </span>
-                    <button
-                      class="mgr"
-                      data-hire
-                      data-hire-planet="${planet}"
-                      data-hire-index="${index}"
-                      ${disabled ? "disabled" : ""}
-                    >${hired ? "Managed" : `Hire · ${formatNum(cost)}`}</button>
-                  </article>
-                `;
-              })
-              .join("")}
-          </section>
-        `;
-      })
-      .join("")}
+    <button class="buy" data-hire-all ${mgrsHot(state) ? "" : "disabled"}>Hire all affordable</button>
+    <p class="sheet-note">Same views either way. A manager just means you stop tapping.</p>
+    ${blocks}
   `;
 }
 
 function renderEvent(state: GameState, now: number): string {
   const live = currentEvent(now);
-  const left = Math.max(0, live.endsAt - now);
   const claimed = state.event.claimedDropId === live.def.id;
   const extraVps = extraEventVps(totalMult(state), live.def);
   return `
-    <div class="farm-head">
-      <strong>${live.def.name}</strong>
-      <p>Ends in ${formatTime(left)} · ${live.def.bonusMult}x farms</p>
-    </div>
-    <article class="biz">
-      <p class="blurb">${live.def.blurb}</p>
-      <div class="meta">
-        <span>Extra: ${live.def.extraName}</span>
-        <span>${formatNum(extraVps)}/s</span>
-      </div>
-      <p class="blurb">Clout ${formatNum(state.event.clout)} · live drop, no checkout.</p>
-      <button class="buy" data-claim-drop ${claimed ? "disabled" : ""}>
-        ${claimed ? "Drop claimed" : `Claim drop · ${formatNum(live.def.dropViews)} views`}
-      </button>
-    </article>
-    <div class="track">
+    <p class="sheet-note">${live.def.blurb}</p>
+    <dl class="card-stats">
+      <div><dt>Farms</dt><dd>${live.def.bonusMult}\u00d7</dd></div>
+      <div><dt>${live.def.extraName}</dt><dd>${formatNum(extraVps)}/s</dd></div>
+      <div><dt>Clout</dt><dd>${formatNum(state.event.clout)}</dd></div>
+    </dl>
+    <button class="buy" data-claim-drop ${claimed ? "disabled" : ""}>
+      ${claimed ? "Drop claimed" : `Claim drop \u00b7 ${formatNum(live.def.dropViews)} views`}
+    </button>
+    <div class="list-block">
+      <h3>Clout track</h3>
       ${EVENT_SHOP.map((item) => {
         const done = state.event.claimed.includes(item.id);
         const can = !done && state.event.clout >= item.clout;
@@ -477,15 +577,15 @@ function renderEvent(state: GameState, now: number): string {
           item.kind === "title"
             ? item.title
             : item.kind === "mult"
-              ? `+${item.amount}x`
+              ? `+${item.amount}\u00d7`
               : `${formatNum(item.amount ?? 0)} views`;
         return `
-          <article class="track-row">
-            <span class="row-copy">
+          <article class="list-row ${done ? "is-done" : ""}">
+            <span class="list-copy">
               <strong>${item.name}</strong>
-              <small>${item.clout} clout · ${prize}</small>
+              <small>${item.clout} clout \u00b7 ${prize}</small>
             </span>
-            <button class="mgr" data-claim-event="${item.id}" ${can ? "" : "disabled"}>
+            <button class="pill" data-claim-event="${item.id}" ${can ? "" : "disabled"}>
               ${done ? "Owned" : "Claim"}
             </button>
           </article>
@@ -496,14 +596,9 @@ function renderEvent(state: GameState, now: number): string {
 }
 
 function renderPass(state: GameState): string {
-  const claimed = state.pass.claimed.length;
   return `
-    <div class="farm-head">
-      <strong>Infinity Intern</strong>
-      <p>${claimed}/${PASS_TIERS.length} · lifetime views</p>
-    </div>
-    <p class="blurb">Free track. Earn it by posting. Nothing to buy.</p>
-    <div class="track">
+    <p class="sheet-note">Free track. Earned by posting, not by paying. Half of it is titles.</p>
+    <div class="list-block">
       ${PASS_TIERS.map((tier) => {
         const done = state.pass.claimed.includes(tier.id);
         const can = !done && state.lifetimeViews >= tier.at;
@@ -511,15 +606,15 @@ function renderPass(state: GameState): string {
           tier.kind === "title"
             ? tier.title
             : tier.kind === "mult"
-              ? `+${tier.amount}x`
+              ? `+${tier.amount}\u00d7 viral`
               : `${formatNum(tier.amount ?? 0)} views`;
         return `
-          <article class="track-row ${done ? "is-done" : ""}">
-            <span class="row-copy">
+          <article class="list-row ${done ? "is-done" : ""}">
+            <span class="list-copy">
               <strong>${tier.name}</strong>
-              <small>${formatNum(tier.at)} views · ${prize}</small>
+              <small>${formatNum(tier.at)} lifetime \u00b7 ${prize}</small>
             </span>
-            <button class="mgr" data-claim-pass="${tier.id}" ${can ? "" : "disabled"}>
+            <button class="pill" data-claim-pass="${tier.id}" ${can ? "" : "disabled"}>
               ${done ? "Claimed" : can ? "Claim" : "Locked"}
             </button>
           </article>
@@ -536,242 +631,414 @@ function renderChestUpgrade(state: GameState): string {
   const cost = chestUpgradeCost(rank);
   const can = canBuyChestUpgrade(state);
   return `
-    <div class="chest-up">
-      <strong>Idle chest ${rank}/${IDLE_CHEST_MAX_RANK}</strong>
-      <p>Fills up to ${formatTime(preview.durationMs)} at ${Math.round(preview.rate * 100)}% of manager VPS. Away 60s+ to claim.</p>
-      <button class="mgr" data-chest-up ${maxed || !can ? "disabled" : ""}>
-        ${maxed ? "Max duration" : `Longer chest · ${formatNum(cost)}`}
-      </button>
-    </div>
+    <section class="list-block">
+      <h3>Idle chest ${rank}/${IDLE_CHEST_MAX_RANK}</h3>
+      <article class="list-row">
+        <span class="list-copy">
+          <strong>Longer chest</strong>
+          <small>Fills up to ${formatTime(preview.durationMs)} at ${Math.round(preview.rate * 100)}% of manager views. Away 60s+ to claim.</small>
+        </span>
+        <button class="pill" data-chest-up ${maxed || !can ? "disabled" : ""}>
+          ${maxed ? "Max" : `Buy \u00b7 ${formatNum(cost)}`}
+        </button>
+      </article>
+    </section>
   `;
 }
 
 function renderHypeShop(state: GameState): string {
   return `
-    <div class="hype-shop">
-      <strong>Hype shop</strong>
-      <p>Banked ${formatNum(state.hype)} Hype. Permanent. Survives prestige.</p>
+    <section class="list-block">
+      <h3>Hype shop \u00b7 ${formatNum(state.hype)} banked</h3>
       ${HYPE_SHOP.map((item) => {
         const level = shopLevel(state, item.id);
         const maxed = level >= item.max;
         const cost = shopCost(item.id, level);
         const can = canBuyShop(state, item.id);
         return `
-          <article class="shop-row">
-            <span class="row-copy">
-              <strong>${item.name} ${level}/${item.max}</strong>
+          <article class="list-row ${maxed ? "is-done" : ""}">
+            <span class="list-copy">
+              <strong>${item.name} <span class="list-level">${level}/${item.max}</span></strong>
               <small>${item.blurb}</small>
             </span>
-            <button class="mgr" data-shop-buy="${item.id}" ${can ? "" : "disabled"}>
-              ${maxed ? "Max" : `Buy · ${formatNum(cost)}`}
+            <button class="pill ${can ? "is-hot" : ""}" data-shop-buy="${item.id}" ${can ? "" : "disabled"}>
+              ${maxed ? "Max" : `${formatNum(cost)} Hype`}
             </button>
           </article>
         `;
       }).join("")}
+    </section>
+  `;
+}
+
+type SheetOpts = {
+  key: string;
+  title: string;
+  sub?: string;
+  body: string;
+  tall?: boolean;
+};
+
+function sheetShell(opts: SheetOpts): string {
+  const id = `sheet-title-${opts.key}`;
+  return `
+    <div class="sheet is-on" data-sheet>
+      <button class="sheet-back" data-sheet-close aria-label="Close" tabindex="-1"></button>
+      <div
+        class="sheet-card ${opts.tall ? "is-tall" : ""}"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="${id}"
+        data-sheet-card
+      >
+        <div class="sheet-head">
+          <div class="sheet-head-copy">
+            <strong id="${id}">${opts.title}</strong>
+            ${opts.sub ? `<p>${opts.sub}</p>` : ""}
+          </div>
+          <button class="sheet-x" data-sheet-close aria-label="Close">\u2715</button>
+        </div>
+        <div class="sheet-body">${opts.body}</div>
+      </div>
     </div>
   `;
 }
 
+function menuRow(
+  attr: string,
+  label: string,
+  detail: string,
+  flag: string,
+): string {
+  return `
+    <button class="menu-row" ${attr}>
+      <span class="list-copy">
+        <strong>${label}</strong>
+        <small>${detail}</small>
+      </span>
+      ${flag ? `<span class="menu-flag">${flag}</span>` : `<span class="menu-go" aria-hidden="true">\u203a</span>`}
+    </button>
+  `;
+}
+
+function renderMenu(state: GameState, now: number): string {
+  const live = currentEvent(now);
+  const left = Math.max(0, live.endsAt - now);
+  const slots = managerSlots(state);
+  const waiting = slots.filter((slot) => slot.owned > 0 && !slot.hired).length;
+  const ready = slots.filter((slot) => slot.affordable).length;
+  const passDone = state.pass.claimed.length;
+  const rows = [
+    state.pendingChest
+      ? menuRow(
+          'data-sheet-open="chest"',
+          "Comeback chest",
+          `+${formatNum(state.pendingChest.views)} views from your time away`,
+          "Ready",
+        )
+      : "",
+    menuRow(
+      'data-sheet-open="managers"',
+      "Managers",
+      waiting > 0 ? `${waiting} farm${waiting === 1 ? "" : "s"} still tapped by hand` : "Every owned farm is on autopilot",
+      ready > 0 ? `${ready} ready` : "",
+    ),
+    menuRow(
+      'data-sheet-open="event"',
+      "Drop",
+      `${live.def.name} \u00b7 ${live.def.bonusMult}\u00d7 farms \u00b7 ${formatTime(left)} left`,
+      dropHot(state, now) ? "Free" : "",
+    ),
+    menuRow(
+      'data-sheet-open="pass"',
+      "Pass",
+      `Infinity Intern \u00b7 ${passDone}/${PASS_TIERS.length} claimed`,
+      passHot(state) ? "Claim" : "",
+    ),
+    menuRow('data-sheet-open="recap"', "Stats", "Lifetime views, viral, Hype, playtime", ""),
+    menuRow('data-sheet-open="settings"', "Settings", "Chest, sound, export, import, reset", ""),
+  ]
+    .filter(Boolean)
+    .join("");
+  return `<div class="menu-list">${rows}</div>
+    <p class="sheet-note">Nothing in here costs money. There is no checkout.</p>`;
+}
+
 function renderSheet(state: GameState, sheet: UiSheet, now: number): string {
+  if (sheet === "menu") {
+    return sheetShell({
+      key: "menu",
+      title: "Menu",
+      sub: "The rare jobs live here so the farm keeps the screen.",
+      body: renderMenu(state, now),
+      tall: true,
+    });
+  }
   if (sheet === "prestige") {
     const goal = goalCopy(state);
     const gain = prestigeGain(state.viewsThisRun, state.prestigeCount);
     const showAlgo = canAlgo(state);
-    return `
-      <div class="sheet is-on" data-sheet>
-        <button class="sheet-back" data-sheet-close aria-label="Close"></button>
-        <div class="sheet-card is-tall">
-          <strong>${goal.title}</strong>
-          <p>${goal.detail}</p>
-          <div class="goal-track" aria-hidden="true"><i id="goal-bar" style="width:${goal.pct}%"></i></div>
-          <p class="sheet-meter">${formatNum(state.viewsThisRun)} / ${formatNum(state.nextPrestigeAt)}</p>
-          <div class="sheet-actions">
-            <button class="ghost-lite" data-sheet-close>Cancel</button>
-            <button class="ghost" data-prestige-go ${goal.ready ? "" : "disabled"}>Prestige · +${gain.toFixed(1)} Hype</button>
-          </div>
-          ${renderHypeShop(state)}
-          ${
-            showAlgo
-              ? `<div class="sheet-algo">
-                  <strong>Enter the algorithm?</strong>
-                  <p>Second layer. Viral resets to 1.00x. Keep +${algoGain(state.prestigeMult, state.prestigeCount).toFixed(2)}x Algo. Hype shop stays.</p>
-                  <button class="ghost-lite" data-algo-go>Algo</button>
-                </div>`
-              : ""
-          }
-        </div>
-      </div>
-    `;
+    return sheetShell({
+      key: "prestige",
+      title: goal.title,
+      sub: goal.ready
+        ? `Reset every farm. Bank ${gain.toFixed(1)} Hype. Planets stay unlocked.`
+        : "Every farm resets. Hype and the shop do not. Planets stay unlocked.",
+      tall: true,
+      body: `
+        <div class="goal-track" aria-hidden="true"><i id="goal-bar" style="width:${goal.pct}%"></i></div>
+        <p class="sheet-meter">${formatNum(state.viewsThisRun)} / ${formatNum(state.nextPrestigeAt)} views this run</p>
+        <button class="buy" data-prestige-go ${goal.ready ? "" : "disabled"}>${
+          goal.ready
+            ? `Prestige \u00b7 bank ${gain.toFixed(1)} Hype`
+            : `Needs ${formatNum(state.nextPrestigeAt)} views this run`
+        }</button>
+        ${renderHypeShop(state)}
+        ${
+          showAlgo
+            ? `<section class="list-block">
+                <h3>Second layer</h3>
+                <article class="list-row">
+                  <span class="list-copy">
+                    <strong>Enter the algorithm</strong>
+                    <small>Viral resets to 1.00\u00d7. You keep +${algoGain(state.prestigeMult, state.prestigeCount).toFixed(2)}\u00d7 Algo and the Hype shop.</small>
+                  </span>
+                  <button class="pill" data-algo-go>Algo</button>
+                </article>
+              </section>`
+            : ""
+        }
+      `,
+    });
   }
   if (sheet === "algo") {
     const gain = algoGain(state.prestigeMult, state.prestigeCount).toFixed(2);
-    return `
-      <div class="sheet is-on" data-sheet>
-        <button class="sheet-back" data-sheet-close aria-label="Close"></button>
-        <div class="sheet-card">
-          <strong>Enter the algorithm?</strong>
-          <p>Second layer. Viral resets to 1.00x. Keep +${gain}x Algo. The Simulation stays open. Hype shop stays.</p>
-          <div class="sheet-actions">
-            <button class="ghost-lite" data-sheet-close>Cancel</button>
-            <button class="ghost" data-algo-go ${canAlgo(state) ? "" : "disabled"}>Algo</button>
-          </div>
+    return sheetShell({
+      key: "algo",
+      title: "Enter the algorithm?",
+      sub: `Viral resets to 1.00\u00d7. You keep +${gain}\u00d7 Algo, The Simulation, and the Hype shop.`,
+      body: `
+        <div class="sheet-actions">
+          <button class="pill" data-sheet-close>Cancel</button>
+          <button class="buy" data-algo-go ${canAlgo(state) ? "" : "disabled"}>Algo</button>
         </div>
-      </div>
-    `;
+      `,
+    });
   }
   if (sheet === "chest") {
     const chest = state.pendingChest;
-    return `
-      <div class="sheet is-on" data-sheet>
-        <button class="sheet-back" data-sheet-close aria-label="Close"></button>
-        <div class="sheet-card">
-          <strong>Comeback chest</strong>
-          <p>Away ${chest ? formatTime(chest.offlineMs) : "a bit"}. Bonus ${chest ? formatNum(chest.views) : "0"} views. Local only.</p>
-          ${renderChestUpgrade(state)}
-          <div class="sheet-actions">
-            <button class="ghost-lite" data-sheet-close>Later</button>
-            <button class="ghost" data-claim-chest>Open chest</button>
-          </div>
-        </div>
-      </div>
-    `;
+    return sheetShell({
+      key: "chest",
+      title: "Comeback chest",
+      sub: `Away ${chest ? formatTime(chest.offlineMs) : "a bit"}. Bonus ${chest ? formatNum(chest.views) : "0"} views on top of what the managers already banked.`,
+      tall: true,
+      body: `
+        <button class="buy" data-claim-chest ${chest ? "" : "disabled"}>Open chest \u00b7 +${formatNum(chest?.views ?? 0)}</button>
+        ${renderChestUpgrade(state)}
+      `,
+    });
   }
   if (sheet === "recap") {
     const snap = recap(state);
-    return `
-      <div class="sheet is-on" data-sheet>
-        <button class="sheet-back" data-sheet-close aria-label="Close"></button>
-        <div class="sheet-card">
-          <strong>Recap</strong>
-          <p>
-            Lifetime ${formatNum(snap.lifetimeViews)} · this run ${formatNum(snap.viewsThisRun)}<br>
-            Viral ${snap.prestigeMult.toFixed(2)}x · shop ${snap.shopViral.toFixed(2)}x · Algo ${snap.algoMult.toFixed(2)}x<br>
-            Hype ${formatNum(snap.hype)} · prestiges ${snap.prestigeCount} · Algos ${snap.algoCount} · managers ${snap.managers}<br>
-            Play ${formatTime(snap.playMs)} · chests ${snap.chests}
-            ${snap.title ? `<br>Title: ${snap.title}` : ""}
-          </p>
-          <div class="sheet-actions">
-            <button class="ghost-lite" data-sheet-close>Close</button>
-          </div>
-        </div>
-      </div>
-    `;
+    return sheetShell({
+      key: "recap",
+      title: "Stats",
+      sub: state.title ? `Title: ${state.title}` : "No title yet. Post more slop.",
+      tall: true,
+      body: `
+        <dl class="card-stats is-grid">
+          <div><dt>Lifetime</dt><dd>${formatNum(snap.lifetimeViews)}</dd></div>
+          <div><dt>This run</dt><dd>${formatNum(snap.viewsThisRun)}</dd></div>
+          <div><dt>Per second</dt><dd>${formatNum(snap.vps)}/s</dd></div>
+          <div><dt>Viral</dt><dd>${snap.prestigeMult.toFixed(2)}\u00d7</dd></div>
+          <div><dt>Shop</dt><dd>${snap.shopViral.toFixed(2)}\u00d7</dd></div>
+          <div><dt>Algo</dt><dd>${snap.algoMult.toFixed(2)}\u00d7</dd></div>
+          <div><dt>Hype</dt><dd>${formatNum(snap.hype)}</dd></div>
+          <div><dt>Prestiges</dt><dd>${snap.prestigeCount}</dd></div>
+          <div><dt>Managers</dt><dd>${snap.managers}</dd></div>
+          <div><dt>Chests</dt><dd>${snap.chests}</dd></div>
+          <div><dt>Playtime</dt><dd>${formatTime(snap.playMs)}</dd></div>
+          <div><dt>Clout</dt><dd>${formatNum(snap.clout)}</dd></div>
+        </dl>
+      `,
+    });
   }
   if (sheet === "import") {
-    return `
-      <div class="sheet is-on" data-sheet>
-        <button class="sheet-back" data-sheet-close aria-label="Close"></button>
-        <div class="sheet-card">
-          <strong>Import save</strong>
-          <p>Paste a JSON export. Local only. No money. This replaces the current farm.</p>
-          <textarea id="import-box" class="save-box" rows="6" placeholder="{ ... }"></textarea>
-          <div class="sheet-actions">
-            <button class="ghost-lite" data-sheet-close>Cancel</button>
-            <button class="ghost" data-import-go>Import</button>
-          </div>
+    return sheetShell({
+      key: "import",
+      title: "Import save",
+      sub: "Paste a JSON export. Local only. This replaces the current farm.",
+      body: `
+        <textarea id="import-box" class="save-box" rows="6" placeholder="{ ... }" data-autofocus aria-label="Save JSON"></textarea>
+        <div class="sheet-actions">
+          <button class="pill" data-sheet-close>Cancel</button>
+          <button class="buy" data-import-go>Import</button>
         </div>
-      </div>
-    `;
+      `,
+    });
   }
   if (sheet === "settings") {
-    return `
-      <div class="sheet is-on" data-sheet>
-        <button class="sheet-back" data-sheet-close aria-label="Close"></button>
-        <div class="sheet-card">
-          <strong>Slop Capitalist</strong>
-          <p>One cursed short. Then the whole internet. Local only. Lives on this PC. No IAP.</p>
-          ${renderChestUpgrade(state)}
-          <div class="sheet-stack">
-            <button class="ghost-lite" data-mute>${state.muted ? "Unmute juice" : "Mute juice"}</button>
-            <button class="ghost-lite" data-recap>Stats / recap</button>
-            <button class="ghost-lite" data-export>Copy export</button>
-            <button class="ghost-lite" data-import-ask>Import save</button>
-            <button class="texty" data-reset>Reset save</button>
-          </div>
-          <div class="sheet-actions">
-            <button class="ghost-lite" data-sheet-close>Close</button>
-          </div>
+    return sheetShell({
+      key: "settings",
+      title: "Settings",
+      sub: "Local to this browser. Lives on this PC. No ads, no IAP, no checkout.",
+      tall: true,
+      body: `
+        ${renderChestUpgrade(state)}
+        <div class="sheet-stack">
+          <button class="pill pill-wide" data-mute>${state.muted ? "Unmute juice" : "Mute juice"}</button>
+          <button class="pill pill-wide" data-export>Copy export</button>
+          <button class="pill pill-wide" data-import-ask>Import save</button>
+          <button class="pill pill-wide pill-danger" data-reset>Reset save</button>
         </div>
-      </div>
-    `;
+      `,
+    });
   }
   if (sheet === "managers") {
-    return `
-      <div class="sheet is-on" data-sheet>
-        <button class="sheet-back" data-sheet-close aria-label="Close"></button>
-        <div class="sheet-card is-tall">
-          <button class="texty sheet-back-link" data-sheet-close>← Farm</button>
-          ${renderManagers(state)}
-        </div>
-      </div>
-    `;
+    return sheetShell({
+      key: "managers",
+      title: "Managers",
+      sub: "Hire once. They post without you, awake or not.",
+      tall: true,
+      body: renderManagers(state),
+    });
   }
   if (sheet === "event") {
-    return `
-      <div class="sheet is-on" data-sheet>
-        <button class="sheet-back" data-sheet-close aria-label="Close"></button>
-        <div class="sheet-card is-tall">
-          <button class="texty sheet-back-link" data-sheet-close>← Farm</button>
-          ${renderEvent(state, now)}
-        </div>
-      </div>
-    `;
+    const live = currentEvent(now);
+    return sheetShell({
+      key: "event",
+      title: live.def.name,
+      sub: `Ends in ${formatTime(Math.max(0, live.endsAt - now))}`,
+      tall: true,
+      body: renderEvent(state, now),
+    });
   }
   if (sheet === "pass") {
-    return `
-      <div class="sheet is-on" data-sheet>
-        <button class="sheet-back" data-sheet-close aria-label="Close"></button>
-        <div class="sheet-card is-tall">
-          <button class="texty sheet-back-link" data-sheet-close>← Farm</button>
-          ${renderPass(state)}
-        </div>
-      </div>
-    `;
+    return sheetShell({
+      key: "pass",
+      title: "Infinity Intern",
+      sub: "Lifetime views only. Nothing here is for sale.",
+      tall: true,
+      body: renderPass(state),
+    });
   }
   return "";
+}
+
+const PITCH_POINTS: { k: string; strong: string; rest: string }[] = [
+  {
+    k: "Aim",
+    strong: "Tap a farm, then buy it.",
+    rest: "The mint button always names the row you picked and what it costs.",
+  },
+  {
+    k: "Stay",
+    strong: "The farm is the game.",
+    rest: "Hiring, drops and the pass open over the list. Nothing replaces it.",
+  },
+  {
+    k: "Reset",
+    strong: "Prestige when the chip fills.",
+    rest: "Farms reset. Hype does not. Spend it on upgrades that stay.",
+  },
+];
+
+function renderPitchMock(): string {
+  const rows = [
+    { icon: "\ud83d\udcf1", name: "Cursed Short", fill: 68, tag: "BEST" },
+    { icon: "\ud83d\udcdd", name: "Faceless Listicle", fill: 34, tag: "" },
+    { icon: "\ud83c\udf99\ufe0f", name: "AI Voiceover Essay", fill: 12, tag: "" },
+  ]
+    .map(
+      (row, i) => `
+        <div class="mock-row ${i === 0 ? "is-on" : ""}">
+          <span class="mock-icon">${row.icon}</span>
+          <span class="mock-name">${row.name}</span>
+          ${row.tag ? `<span class="mock-tag">${row.tag}</span>` : ""}
+          <i class="mock-bar" style="--fill:${row.fill}%"><b></b></i>
+        </div>`,
+    )
+    .join("");
+  return `
+    <div class="mock" aria-hidden="true">
+      <div class="mock-hud">
+        <span class="mock-views">1.24M</span>
+        <span class="mock-vps">18.2K/s</span>
+        <span class="mock-goal"><b></b></span>
+      </div>
+      ${rows}
+      <div class="mock-dock"><span>Buy 10\u00d7 Cursed Short \u00b7 84.1K</span></div>
+    </div>
+  `;
 }
 
 function renderLanding(state: GameState, session: UiSession): string {
   const progress = hasSaveProgress(state);
   const last = session.username;
   const signedIn = Boolean(last);
-  const continueLabel = signedIn
-    ? progress
-      ? `Continue · ${escapeHtml(last)} · ${formatNum(state.views)} views`
-      : `Continue · ${escapeHtml(last)}`
-    : "Continue";
+  const continueLabel = progress
+    ? `Continue \u00b7 ${escapeHtml(last)} \u00b7 ${formatNum(state.views)} views`
+    : `Continue \u00b7 ${escapeHtml(last)}`;
+  const others = session.names.filter((name) => !usernameActive(last, name));
   return `
-    <div class="frame landing-frame">
-      <main class="landing">
-        <p class="wordmark">Slop Capitalist</p>
-        <p class="landing-tag">Idle tycoon. Farm the algorithm. One cursed short at a time.</p>
-        <ul class="landing-bullets">
-          <li><strong>Tap a farm, then buy it.</strong> BEST is a mode if you want the math to pick.</li>
-          <li><strong>The farm is the game.</strong> Hire, drops, and the pass open as sheets — they never replace the list.</li>
-          <li><strong>Prestige when the chip fills.</strong> Reset farms. Bank Hype. Spend it on permanent upgrades.</li>
-        </ul>
-        <form class="landing-auth" data-signin-form>
-          <label class="landing-label" for="username">Username
-            <input id="username" class="username" data-username type="text" maxlength="24" autocomplete="username" placeholder="Pick a name" value="${escapeHtml(last)}" />
+    <div class="frame frame-pitch">
+      <main class="pitch">
+        <header class="pitch-head">
+          <p class="wordmark wordmark-xl"><span class="ink-mint">Slop</span> Capitalist</p>
+          <p class="pitch-tag">An idle tycoon about farming the algorithm. You do not make content. You make throughput.</p>
+        </header>
+        ${renderPitchMock()}
+        <ol class="pitch-points">
+          ${PITCH_POINTS.map(
+            (point) => `
+              <li>
+                <span class="pitch-k">${point.k}</span>
+                <span class="pitch-copy"><strong>${point.strong}</strong> ${point.rest}</span>
+              </li>`,
+          ).join("")}
+        </ol>
+        <form class="pitch-auth" data-signin-form>
+          <label class="field">
+            <span class="field-label">Player name</span>
+            <input
+              id="username"
+              class="field-input"
+              data-username
+              type="text"
+              maxlength="24"
+              autocomplete="username"
+              placeholder="${signedIn ? escapeHtml(last) : "Pick any name"}"
+              value="${escapeHtml(last)}"
+            />
           </label>
-          <button class="${signedIn ? "ghost-lite" : "buy"}" data-sign-in type="submit">${signedIn ? "Switch / create" : "Sign in"}</button>
+          ${
+            signedIn
+              ? `<button class="buy buy-lg" data-continue data-continue-user="${escapeHtml(last)}">${continueLabel}</button>
+                 <div class="pitch-alt">
+                   <button class="link" data-sign-in type="submit">Switch or create a player</button>
+                   <button class="link link-danger" data-new-run type="button">New run</button>
+                 </div>`
+              : `<button class="buy buy-lg" data-sign-in type="submit">Start posting</button>
+                 <p class="pitch-hint">No password. No email. The name is just which save to load.</p>`
+          }
         </form>
         ${
-          session.names.length
-            ? `<div class="landing-users">${session.names
-                .map(
-                  (name) =>
-                    `<button type="button" class="ghost-lite ${usernameActive(session.username, name) ? "is-on" : ""}" data-user-pick="${escapeHtml(name)}">${escapeHtml(name)}</button>`,
-                )
-                .join("")}</div>`
+          others.length
+            ? `<div class="pitch-users">
+                <span class="field-label">Other saves</span>
+                <div class="pitch-users-row">${others
+                  .map(
+                    (name) =>
+                      `<button type="button" class="pill" data-user-pick="${escapeHtml(name)}">${escapeHtml(name)}</button>`,
+                  )
+                  .join("")}</div>
+              </div>`
             : ""
         }
-        <div class="landing-actions">
-          <button class="${signedIn ? "buy" : "ghost-lite"}" data-continue data-continue-user="${escapeHtml(last)}" ${signedIn ? "" : "disabled"}>${continueLabel}</button>
-          <button class="ghost-lite" data-new-run ${signedIn ? "" : "disabled"}>New run</button>
-        </div>
-        <p class="landing-note">Toy account. Username only — no password, no email. Local to this browser. Switching names keeps the other save. No ads. No checkout. Lives on this PC.</p>
-        <div id="toast-slot" class="toast-slot landing-toast" role="status"></div>
+        <footer class="pitch-foot">
+          <p>Saves live in this browser. No ads, no passes, no checkout. It runs on one PC and that is the whole plan.</p>
+        </footer>
+        <div id="toast-slot" class="toast-slot is-static" role="status" aria-live="polite"></div>
       </main>
     </div>
   `;
@@ -798,76 +1065,72 @@ export function renderApp(
   if (view.screen === "landing") {
     root.innerHTML = `${renderLanding(state, session)}${renderSheet(state, sheet, clock)}`;
     bindChrome(root, view, handlers);
+    manageSheetFocus(root, sheet, handlers);
     return;
   }
 
   const goal = goalCopy(state);
-  const camera = renderCamera(state, buyMode, view);
   const showAlgo = algoVisible(state);
   const algoReady = canAlgo(state);
 
   root.innerHTML = `
     <div class="frame">
-      <header class="chrome-top">
-        <div class="brand-row">
-          <button class="wordmark-btn" data-home aria-label="Home">
-            <span class="wordmark wordmark-home">Slop</span>
-            <span class="wordmark"> Capitalist</span>
+      <header class="hud" ${sheet ? "inert" : ""}>
+        <div class="hud-brand">
+          <button class="brandmark" data-home aria-label="Slop Capitalist \u2014 back to the start screen">
+            <span class="ink-mint">Slop</span> Capitalist
           </button>
-          ${state.title ? `<p class="flavor-title">${state.title}</p>` : ""}
-          <button class="overflow" data-overflow aria-label="Settings">…</button>
+          ${state.title ? `<span class="hud-title">${escapeHtml(state.title)}</span>` : ""}
+          <button class="hud-menu ${menuHot(state, clock) ? "is-hot" : ""}" data-overflow aria-label="Menu">
+            <span class="hud-menu-icon" aria-hidden="true"></span>
+          </button>
         </div>
-        <div class="wallet wallet-thin">
-          <div class="wallet-money">
-            <div class="wallet-views">
-              <span class="label">Views</span>
-              <strong id="views">${formatNum(state.views)}</strong>
-            </div>
-            <em id="vps">${formatNum(globalViewsPerSec(state, clock))}/s</em>
+        <div class="hud-body">
+          <div class="hud-money">
+            <strong id="views" class="hud-views">${formatNum(state.views)}</strong>
+            <span class="hud-unit">views</span>
+            <em id="vps" class="hud-vps">${formatNum(globalViewsPerSec(state, clock))}/s</em>
           </div>
-          <div class="wallet-chips">
-            <span class="stat-chip" id="mult">Viral ${totalMult(state).toFixed(2)}x</span>
+          <button
+            class="hud-goal ${goal.ready ? "is-ready" : ""} ${shopHot(state) ? "is-hot" : ""}"
+            data-prestige
+            aria-label="${goal.aria}"
+          >
+            <span class="hud-goal-top">Prestige</span>
+            <i class="meter" aria-hidden="true"><b id="goal-bar" style="width:${goal.pct}%"></b></i>
+            <span class="hud-goal-sub" id="goal-sub">${goal.chip}</span>
+          </button>
+          <div class="hud-meta">
+            <span id="mult">Viral ${totalMult(state).toFixed(2)}\u00d7</span>
             ${
               state.hype > 0 || state.prestigeCount > 0
-                ? `<span class="stat-chip" id="hype">Hype ${formatNum(state.hype)}</span>`
+                ? `<span id="hype">Hype ${formatNum(state.hype)}</span>`
                 : ""
             }
             ${
               showAlgo
                 ? algoReady
-                  ? `<button class="stat-chip is-ready" data-algo id="algo">Algo ${state.algoMult.toFixed(2)}x</button>`
-                  : `<span class="stat-chip" id="algo">Algo ${state.algoMult.toFixed(2)}x</span>`
+                  ? `<button class="hud-algo is-ready" data-algo id="algo">Algo ${state.algoMult.toFixed(2)}\u00d7 \u00b7 ready</button>`
+                  : `<span id="algo">Algo ${state.algoMult.toFixed(2)}\u00d7</span>`
                 : ""
             }
-            <button class="stat-chip prestige-chip ${goal.ready ? "is-ready" : ""} ${shopHot(state) ? "is-hot" : ""}" data-prestige>
-              <span>Prestige</span>
-              <i class="mini-bar" aria-hidden="true"><b id="goal-bar" style="width:${goal.pct}%"></b></i>
-            </button>
           </div>
         </div>
       </header>
-      <main class="camera">${camera}${
+      <main class="camera" ${sheet ? "inert" : ""}>${renderCamera(state, buyMode, view)}${
         state.seenTooltip
           ? ""
-          : `<div class="tip" data-tip>
-              <strong>Tap a row. The mint button follows it.</strong>
-              <p>Quantity is 1 / 10 / 100 / MAX / RANK. BEST is a mode that spends on the advisor winner instead.</p>
-              <button class="ghost" data-dismiss-tip>Got it</button>
-            </div>`
+          : `<aside class="tip" data-tip>
+              <strong>Tap a row to aim. The mint button buys it.</strong>
+              <p>\u00d710 / \u00d7100 / MAX / RANK change how many. BEST hands the pick to the advisor.</p>
+              <button class="pill" data-dismiss-tip>Got it</button>
+            </aside>`
       }</main>
-      <footer class="chrome-bot">
-        <div id="toast-slot" class="toast-slot" role="status"></div>
-        <div class="dock-modes">
-          ${renderBuyChips(buyMode, view.bestMode)}
-        </div>
-        ${dockHint(buyMode, view.bestMode)}
-        <nav class="dock-icons" aria-label="More">
-          <button class="dock-icon ${mgrsHot(state) ? "is-hot" : ""}" data-sheet-open="managers">Mgrs</button>
-          <button class="dock-icon ${dropHot(state, clock) ? "is-hot" : ""}" data-sheet-open="event">Drop</button>
-          <button class="dock-icon ${passHot(state) ? "is-hot" : ""}" data-sheet-open="pass">Pass</button>
-        </nav>
+      <footer class="dock">
+        <div id="toast-slot" class="toast-slot" role="status" aria-live="polite"></div>
+        ${renderChips(state, buyMode, view.bestMode)}
         <div class="dock-actions" id="dock-actions">
-          ${renderDockActions(state, buyMode, view.selected, view.screen, view.bestMode)}
+          ${renderDockActions(state, buyMode, view.selected, view.bestMode)}
         </div>
       </footer>
       ${renderSheet(state, sheet, clock)}
@@ -875,6 +1138,95 @@ export function renderApp(
   `;
 
   bindChrome(root, view, handlers);
+  manageSheetFocus(root, sheet, handlers);
+  if (keyboardRows && view.screen === "outside" && !sheet) {
+    root.querySelector<HTMLElement>(`[data-row="${view.selected}"]`)?.focus();
+  }
+}
+
+let keyboardRows = false;
+let focusedSheet: UiSheet = null;
+
+function focusables(scope: HTMLElement): HTMLElement[] {
+  return Array.from(
+    scope.querySelectorAll<HTMLElement>(
+      'button:not([disabled]):not([tabindex="-1"]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((el) => !el.hasAttribute("hidden"));
+}
+
+function manageSheetFocus(root: HTMLElement, sheet: UiSheet, handlers: UiHandlers): void {
+  const card = root.querySelector<HTMLElement>("[data-sheet-card]");
+  if (!card) {
+    focusedSheet = null;
+    return;
+  }
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      handlers.onSheetClose();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const items = focusables(card);
+    if (items.length === 0) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = root.ownerDocument?.activeElement as HTMLElement | null;
+    if (event.shiftKey && (active === first || !card.contains(active))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  if (focusedSheet !== sheet) {
+    focusedSheet = sheet;
+    const target = card.querySelector<HTMLElement>("[data-autofocus]") ?? focusables(card)[0];
+    target?.focus();
+  }
+}
+
+function bindRowKeys(root: HTMLElement, view: UiView, handlers: UiHandlers): void {
+  const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-row]"));
+  if (rows.length === 0) return;
+  rows.forEach((row) => {
+    row.addEventListener("keydown", (event) => {
+      const index = Number(row.dataset.row);
+      const key = event.key;
+      if (key === "ArrowDown" || key === "ArrowRight") {
+        event.preventDefault();
+        keyboardRows = true;
+        handlers.onSelect(Math.min(rows.length - 1, index + 1));
+        return;
+      }
+      if (key === "ArrowUp" || key === "ArrowLeft") {
+        event.preventDefault();
+        keyboardRows = true;
+        handlers.onSelect(Math.max(0, index - 1));
+        return;
+      }
+      if (key === "Home") {
+        event.preventDefault();
+        keyboardRows = true;
+        handlers.onSelect(0);
+        return;
+      }
+      if (key === "End") {
+        event.preventDefault();
+        keyboardRows = true;
+        handlers.onSelect(rows.length - 1);
+        return;
+      }
+      if (key === "Enter" || key === " ") {
+        event.preventDefault();
+        keyboardRows = true;
+        if (view.selected === index) handlers.onEnter(index);
+        else handlers.onSelect(index);
+      }
+    });
+  });
 }
 
 function bindChrome(root: HTMLElement, view: UiView, handlers: UiHandlers): void {
@@ -914,7 +1266,7 @@ function bindChrome(root: HTMLElement, view: UiView, handlers: UiHandlers): void
   root.querySelector("[data-farm]")?.addEventListener("click", handlers.onFarm);
   root.querySelector("[data-buy-best]")?.addEventListener("click", handlers.onBuyBest);
   root.querySelector("[data-dock-buy]")?.addEventListener("click", () => handlers.onBuy(view.selected));
-  root.querySelector("[data-dock-mgr]")?.addEventListener("click", () => handlers.onManager(view.selected));
+  root.querySelector("[data-card-mgr]")?.addEventListener("click", () => handlers.onManager(view.selected));
   root.querySelectorAll("[data-hire-all]").forEach((el) => {
     el.addEventListener("click", handlers.onHireAll);
   });
@@ -945,30 +1297,43 @@ function bindChrome(root: HTMLElement, view: UiView, handlers: UiHandlers): void
   root.querySelectorAll<HTMLElement>("[data-select]").forEach((row) => {
     row.addEventListener("click", (event) => {
       if ((event.target as HTMLElement).closest("[data-enter]")) return;
+      keyboardRows = false;
       handlers.onSelect(Number(row.dataset.select));
     });
   });
   root.querySelectorAll<HTMLButtonElement>("[data-enter]").forEach((btn) => {
     btn.addEventListener("click", (event) => {
       event.stopPropagation();
-      const index = Number(btn.dataset.enter);
-      handlers.onEnter(index);
+      keyboardRows = false;
+      handlers.onEnter(Number(btn.dataset.enter));
     });
   });
   root.querySelectorAll<HTMLButtonElement>("[data-run]").forEach((btn) => {
     btn.addEventListener("click", () => handlers.onRun(Number(btn.dataset.run)));
   });
+  bindRowKeys(root, view, handlers);
 }
 
 function patchGoal(root: HTMLElement, state: GameState): void {
   const goal = goalCopy(state);
   const bar = root.querySelector<HTMLElement>("#goal-bar");
   const chip = root.querySelector<HTMLButtonElement>("[data-prestige]");
+  const sub = root.querySelector<HTMLElement>("#goal-sub");
   if (bar) bar.style.width = `${goal.pct}%`;
-  if (chip) chip.classList.toggle("is-ready", goal.ready);
+  if (sub) sub.textContent = goal.chip;
+  if (chip) {
+    chip.classList.toggle("is-ready", goal.ready);
+    chip.classList.toggle("is-hot", shopHot(state));
+    chip.setAttribute("aria-label", goal.aria);
+  }
 }
 
-function patchOutsideRows(root: HTMLElement, state: GameState, buyMode: BuyMode, selected: number): void {
+function patchOutsideRows(
+  root: HTMLElement,
+  state: GameState,
+  buyMode: BuyMode,
+  selected: number,
+): void {
   const defs = BUSINESSES[state.planet];
   const rows = state.businesses[state.planet];
   const advice = adviseFarm(state, buyMode);
@@ -977,31 +1342,33 @@ function patchOutsideRows(root: HTMLElement, state: GameState, buyMode: BuyMode,
     const row = rows[index];
     const el = root.querySelector<HTMLElement>(`[data-row="${index}"]`);
     if (!el) return;
-    el.classList.toggle("is-on", selected === index);
-    const open = el.querySelector<HTMLElement>("[data-enter]");
-    if (open) open.classList.toggle("is-on", selected === index);
+    const on = selected === index;
+    el.classList.toggle("is-on", on);
+    el.setAttribute("aria-selected", on ? "true" : "false");
+    el.tabIndex = on ? 0 : -1;
+    const cycleSec = cycleSecFor(def.cycleSec, row.owned, state.shop?.tempo ?? 0);
     const vps = rowVps(state, index);
-    const cycle = cycleSecFor(def.cycleSec, row.owned, state.shop?.tempo ?? 0);
-    const next = nextMilestone(row.owned);
-    const eta = timeToRankSec(state, index);
-    const badge = advice.badges[index];
+    const run = barRun(cycleSec) && vps > 0;
+    const bar = el.querySelector<HTMLElement>("[data-row-bar]");
+    if (bar) bar.classList.toggle("is-running", run);
+    const fill = el.querySelector<HTMLElement>("[data-row-fill]");
+    if (fill) fill.style.width = run ? "100%" : `${Math.min(100, row.progress * 100)}%`;
     const vpsEl = el.querySelector("[data-row-vps]");
+    if (vpsEl) vpsEl.textContent = vps > 0 ? `${formatNum(vps)}/s` : "idle";
     const cycleEl = el.querySelector("[data-row-cycle]");
+    if (cycleEl) cycleEl.textContent = cycleCopy(cycleSec);
     const rankEl = el.querySelector("[data-row-rank]");
+    if (rankEl) rankEl.textContent = rankCopy(state, index, row.owned);
+    const badge = advice.badges[index];
     const badgeEl = el.querySelector("[data-row-badge]");
-    const ownedEl = el.querySelector(".owned");
-    if (vpsEl) vpsEl.textContent = vps > 0 ? `${formatNum(vps)}/s` : "—";
-    if (cycleEl) cycleEl.textContent = row.owned > 0 ? formatCycle(cycle) : formatCycle(def.cycleSec);
-    if (rankEl) {
-      rankEl.textContent = next
-        ? `next rank ${next} (${next - row.owned})${eta !== null ? ` · ~${formatTime(eta * 1000)}` : ""}`
-        : "maxed";
-    }
     if (badgeEl) {
       badgeEl.textContent = badge ? badge.toUpperCase() : "";
       badgeEl.className = `badge ${badge ? `is-${badge}` : "is-off"}`;
+      if (badge) badgeEl.setAttribute("title", badgeTitle(badge));
+      else badgeEl.removeAttribute("title");
     }
-    if (ownedEl) ownedEl.textContent = `x${formatNum(row.owned)}`;
+    const ownedEl = el.querySelector("[data-row-owned]");
+    if (ownedEl) ownedEl.textContent = `\u00d7${formatNum(row.owned)}`;
   });
 }
 
@@ -1009,17 +1376,21 @@ function patchInside(root: HTMLElement, state: GameState, selected: number): voi
   const def = BUSINESSES[state.planet][selected];
   const row = state.businesses[state.planet][selected];
   if (!def || !row) return;
-  const fill = root.querySelector<HTMLElement>(".bar i");
-  if (fill) fill.style.width = `${Math.min(100, row.progress * 100)}%`;
-  const payout = root.querySelector(".bar span");
+  const cycleSec = cycleSecFor(def.cycleSec, row.owned, state.shop?.tempo ?? 0);
+  const run = barRun(cycleSec) && rowVps(state, selected) > 0;
+  const bar = root.querySelector<HTMLElement>("[data-inside-bar]");
+  if (bar) bar.classList.toggle("is-running", run);
+  const fill = root.querySelector<HTMLElement>("[data-inside-fill]");
+  if (fill) fill.style.width = run ? "100%" : `${Math.min(100, row.progress * 100)}%`;
+  const payout = root.querySelector("[data-inside-payout]");
   if (payout) {
     payout.textContent =
-      row.owned > 0 ? `${formatNum(cycleIncome(state.planet, selected, row.owned, totalMult(state)))} views` : "—";
+      row.owned > 0 ? `${formatNum(cycleIncome(state.planet, selected, row.owned, totalMult(state)))} views` : "\u2014";
   }
-  const hint = root.querySelector(".run-copy small");
+  const hint = root.querySelector("[data-inside-hint]");
   if (hint) {
     hint.textContent = row.manager
-      ? "On autopilot · tap to refresh"
+      ? "On autopilot \u00b7 tap to nudge the bar"
       : row.owned <= 0
         ? "Buy one to start"
         : "Tap to upload";
@@ -1027,13 +1398,19 @@ function patchInside(root: HTMLElement, state: GameState, selected: number): voi
   root.querySelectorAll<HTMLButtonElement>("[data-run]").forEach((btn) => {
     btn.disabled = row.owned <= 0;
   });
-  const owned = root.querySelector(".biz .owned");
-  if (owned) owned.textContent = `x${formatNum(row.owned)}`;
-  const meta = root.querySelectorAll(".meta span");
-  const milestone = nextMilestone(row.owned);
-  if (meta[0]) meta[0].textContent = milestone ? `Next rank at ${milestone}` : "Milestones maxed";
-  if (meta[1]) {
-    meta[1].textContent = `${row.owned > 0 ? formatCycle(cycleSecFor(def.cycleSec, row.owned, state.shop?.tempo ?? 0)) : formatCycle(def.cycleSec)} cycle`;
+  const owned = root.querySelector("[data-inside-owned]");
+  if (owned) owned.textContent = `\u00d7${formatNum(row.owned)}`;
+  const vps = root.querySelector("[data-inside-vps]");
+  if (vps) vps.textContent = row.owned > 0 ? `${formatNum(rowVps(state, selected))}/s` : "\u2014";
+  const cycle = root.querySelector("[data-inside-cycle]");
+  if (cycle) cycle.textContent = cycleCopy(row.owned > 0 ? cycleSec : def.cycleSec);
+  const rank = root.querySelector("[data-inside-rank]");
+  if (rank) rank.textContent = String(nextMilestone(row.owned) ?? "max");
+  const mgr = root.querySelector<HTMLButtonElement>("[data-card-mgr]");
+  if (mgr) {
+    const price = managerPrice(state, state.planet, selected);
+    mgr.disabled = row.manager || row.owned <= 0 || state.views < price;
+    mgr.textContent = row.manager ? "Managed" : `${def.managerName} \u00b7 ${formatNum(price)}`;
   }
 }
 
@@ -1051,7 +1428,7 @@ function patchManagers(root: HTMLElement, state: GameState): void {
     }
     const cost = managerPrice(state, planet, index);
     btn.disabled = row.owned <= 0 || state.views < cost;
-    btn.textContent = `Hire · ${formatNum(cost)}`;
+    btn.textContent = `Hire \u00b7 ${formatNum(cost)}`;
   });
 }
 
@@ -1061,7 +1438,7 @@ function patchEvent(root: HTMLElement, state: GameState, now: number): void {
   if (drop) {
     const claimed = state.event.claimedDropId === live.def.id;
     drop.disabled = claimed;
-    drop.textContent = claimed ? "Drop claimed" : `Claim drop · ${formatNum(live.def.dropViews)} views`;
+    drop.textContent = claimed ? "Drop claimed" : `Claim drop \u00b7 ${formatNum(live.def.dropViews)} views`;
   }
   root.querySelectorAll<HTMLButtonElement>("[data-claim-event]").forEach((btn) => {
     const id = btn.dataset.claimEvent ?? "";
@@ -1097,7 +1474,7 @@ export function patchMeters(
     const cont = root.querySelector<HTMLButtonElement>("[data-continue]");
     const signed = cont?.dataset.continueUser?.trim();
     if (cont && signed && hasSaveProgress(state) && !cont.disabled) {
-      cont.textContent = `Continue · ${signed} · ${formatNum(state.views)} views`;
+      cont.textContent = `Continue \u00b7 ${signed} \u00b7 ${formatNum(state.views)} views`;
     }
     return;
   }
@@ -1108,38 +1485,48 @@ export function patchMeters(
   const algo = root.querySelector("#algo");
   if (views) views.textContent = formatNum(state.views);
   if (vps) vps.textContent = `${formatNum(globalViewsPerSec(state, clock))}/s`;
-  if (mult) mult.textContent = `Viral ${totalMult(state).toFixed(2)}x`;
+  if (mult) mult.textContent = `Viral ${totalMult(state).toFixed(2)}\u00d7`;
   const hype = root.querySelector("#hype");
   if (hype) hype.textContent = `Hype ${formatNum(state.hype)}`;
-  if (algo) algo.textContent = `Algo ${state.algoMult.toFixed(2)}x`;
+  if (algo) {
+    algo.textContent = `Algo ${state.algoMult.toFixed(2)}\u00d7${
+      algo.classList.contains("is-ready") ? " \u00b7 ready" : ""
+    }`;
+  }
   patchGoal(root, state);
 
+  const menu = root.querySelector<HTMLElement>("[data-overflow]");
+  if (menu) menu.classList.toggle("is-hot", menuHot(state, clock));
+
   if (root.querySelector("[data-hire]")) patchManagers(root, state);
-  root.querySelectorAll<HTMLButtonElement>("[data-hire-all]").forEach((btn) => {
-    btn.disabled = !managerSlots(state).some((slot) => slot.affordable);
-  });
+  const hireHot = mgrsHot(state);
+  const farmHire = root.querySelector<HTMLButtonElement>(".pill-hire");
+  if (farmHire) farmHire.hidden = !hireHot;
+  const sheetHire = root.querySelector<HTMLButtonElement>(".buy[data-hire-all]");
+  if (sheetHire) sheetHire.disabled = !hireHot;
   if (root.querySelector("[data-claim-drop]")) patchEvent(root, state, clock);
   if (root.querySelector("[data-claim-pass]")) patchPass(root, state);
   if (view.screen === "outside") patchOutsideRows(root, state, buyMode, view.selected);
   else if (view.screen === "inside") patchInside(root, state, view.selected);
 
+  const hint = root.querySelector("[data-dock-hint]");
+  if (hint) hint.textContent = dockHintText(state, buyMode, view.bestMode);
+
   const dockBuy = root.querySelector<HTMLButtonElement>("[data-dock-buy]");
-  const dockMgr = root.querySelector<HTMLButtonElement>("[data-dock-mgr]");
   const bestBtn = root.querySelector<HTMLButtonElement>("[data-buy-best]");
+  const bestChip = root.querySelector<HTMLElement>("[data-best-mode]");
   const def = BUSINESSES[state.planet][view.selected];
   const row = state.businesses[state.planet][view.selected];
   if (bestBtn) {
     const advice = adviseFarm(state, buyMode);
     bestBtn.disabled = advice.bestIndex === null;
     bestBtn.textContent = bestButtonText(state, buyMode, advice);
+    if (bestChip) bestChip.classList.toggle("is-dead", advice.bestIndex === null);
   }
   if (def && row && dockBuy) {
     const quote = quotedBuy(state, view.selected, buyMode);
     dockBuy.disabled = !quote.canBuy;
     dockBuy.textContent = buyButtonText(quote, buyMode, def.name);
-  }
-  if (def && row && dockMgr && !row.manager) {
-    dockMgr.disabled = row.owned <= 0 || state.views < managerPrice(state, state.planet, view.selected);
   }
 }
 
@@ -1153,6 +1540,34 @@ export function flashNudge(root: HTMLElement): void {
     bar.classList.remove("is-flash");
     if (pip) pip.hidden = true;
   }, 220);
+}
+
+/** Buy juice: the row thumps, the counter pops, a gain chip floats off the row. */
+export function flashBuy(root: HTMLElement, index: number, count: number): void {
+  const wallet = root.querySelector<HTMLElement>("#views");
+  if (wallet) {
+    wallet.classList.remove("is-pop");
+    void wallet.offsetWidth;
+    wallet.classList.add("is-pop");
+    window.setTimeout(() => wallet.classList.remove("is-pop"), 320);
+  }
+  const button = root.querySelector<HTMLElement>("[data-dock-buy], [data-buy-best]");
+  if (button) {
+    button.classList.remove("is-punch");
+    void button.offsetWidth;
+    button.classList.add("is-punch");
+    window.setTimeout(() => button.classList.remove("is-punch"), 260);
+  }
+  const row = root.querySelector<HTMLElement>(`[data-row="${index}"]`);
+  if (!row) return;
+  row.classList.add("is-bought");
+  window.setTimeout(() => row.classList.remove("is-bought"), 420);
+  const gain = root.ownerDocument.createElement("span");
+  gain.className = "gain-pop";
+  gain.textContent = `+${formatNum(count)}`;
+  gain.setAttribute("aria-hidden", "true");
+  row.appendChild(gain);
+  window.setTimeout(() => gain.remove(), 700);
 }
 
 let toastTimer = 0;
