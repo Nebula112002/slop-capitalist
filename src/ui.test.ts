@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { describe, expect, it } from "vitest";
 import { BUSINESSES, PRESTIGE_AT, UI_ROUTE_KEY } from "./data";
+import { formatNum } from "./format";
 import { adviseFarm, hireManager, newGame, prestige, quotedBuy, type BuyMode } from "./game";
 import {
   algoVisible,
@@ -496,7 +497,9 @@ describe("dock", () => {
     renderApp(root, state, "max", farm, null, noop);
     expect(root.querySelector("[data-dock-hint]")?.textContent).toContain("MAX spends every view");
     renderApp(root, state, "rank", farm, null, noop);
-    expect(root.querySelector("[data-dock-hint]")?.textContent).toContain("RANK buys up to the next \u00d72");
+    expect(root.querySelector("[data-dock-hint]")?.textContent).toContain(
+      "RANK buys the next \u00d72 rank. You need the full cost.",
+    );
     renderApp(root, state, "rank", { ...farm, bestMode: true }, null, noop);
     expect(root.querySelector("[data-dock-hint]")?.textContent).toContain(
       "RANK BEST is the best step toward a rank",
@@ -516,14 +519,19 @@ describe("dock", () => {
     expect(dockHintText(broke, 1, true)).toContain("Nothing is affordable");
   });
 
-  it("labels RANK as a partial gap", () => {
+  it("labels RANK as the full remaining gap and stays disabled until it is affordable", () => {
     const state = newGame();
     state.businesses.youtube[0].owned = 20;
     state.views = 20;
     const quote = quotedBuy(state, 0, "rank");
     expect(quote.gap).toBe(5);
-    expect(quote.count).toBeLessThan(5);
-    expect(buyButtonText(quote, "rank").startsWith("Rank ")).toBe(true);
+    expect(quote.count).toBe(0);
+    expect(quote.canBuy).toBe(false);
+    expect(buyButtonText(quote, "rank")).toBe(`Rank 5 \u00b7 ${formatNum(quote.cost)}`);
+
+    const root = document.createElement("div");
+    renderApp(root, state, "rank", farm, null, noop);
+    expect(root.querySelector<HTMLButtonElement>("[data-dock-buy]")?.disabled).toBe(true);
   });
 
   it("Buy BEST label names the winning row", () => {

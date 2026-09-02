@@ -175,7 +175,7 @@ function chipLabel(mode: BuyMode): string {
 
 function chipTitle(mode: BuyMode): string {
   if (mode === "max") return "Buy everything you can afford";
-  if (mode === "rank") return "Buy up to the next \u00d72 rank";
+  if (mode === "rank") return "Buy the next \u00d72 rank if you can afford the full cost";
   return `Buy ${mode} at a time`;
 }
 
@@ -216,9 +216,6 @@ export function buyButtonText(quote: BuyQuote, mode: BuyMode, name?: string): st
   const cost = formatNum(quote.cost);
   const who = name ? ` ${name}` : "";
   if (mode === "rank" && quote.gap !== null) {
-    if (quote.count > 0 && quote.count < quote.gap) {
-      return `Rank ${quote.count}/${quote.gap}${who} \u00b7 ${cost}`;
-    }
     return `Rank ${quote.gap}${who} \u00b7 ${cost}`;
   }
   if (name) return `Buy ${quote.count}\u00d7 ${name} \u00b7 ${cost}`;
@@ -243,7 +240,7 @@ export function dockHintText(state: GameState, mode: BuyMode, bestMode: boolean)
     }
     return "BEST spends on the most views per second per view spent. Ties go to the top row.";
   }
-  if (mode === "rank") return "RANK buys up to the next \u00d72 rank. Partial is fine.";
+  if (mode === "rank") return "RANK buys the next \u00d72 rank. You need the full cost.";
   if (mode === "max") return "MAX spends every view you have on this row.";
   return "MAX spends it all. RANK stops at the next \u00d72.";
 }

@@ -669,10 +669,9 @@ export function quotedBuy(state: GameState, index: number, mode: BuyMode): BuyQu
       return { count, cost, gap: null, canBuy: !locked && count > 0, locked };
     }
     const gap = next - row.owned;
-    const afford = maxAffordable(state.views, def.baseCost, def.costMult, row.owned);
-    const count = Math.min(afford, gap);
-    const cost = buyCost(def.baseCost, def.costMult, row.owned, count > 0 ? count : gap);
-    return { count, cost, gap, canBuy: !locked && count > 0, locked };
+    const cost = buyCost(def.baseCost, def.costMult, row.owned, gap);
+    const canBuy = !locked && state.views >= cost;
+    return { count: canBuy ? gap : 0, cost, gap, canBuy, locked };
   }
 
   if (mode === "max") {

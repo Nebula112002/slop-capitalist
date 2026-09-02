@@ -92,15 +92,26 @@ describe("buy bar", () => {
     expect(state.businesses.youtube[0].owned).toBe(25);
   });
 
-  it("buys a partial gap toward the next rank", () => {
+  it("does not buy a rank unless the full gap is affordable", () => {
     const state = newGame();
     state.businesses.youtube[0].owned = 20;
     const def = BUSINESSES.youtube[0];
     const three = buyCost(def.baseCost, def.costMult, 20, 3);
+    const five = buyCost(def.baseCost, def.costMult, 20, 5);
     state.views = three * 1.001;
-    const bought = buy(state, 0, "rank");
-    expect(bought).toBe(3);
-    expect(state.businesses.youtube[0].owned).toBe(23);
+    const quote = quotedBuy(state, 0, "rank");
+    expect(quote.gap).toBe(5);
+    expect(quote.count).toBe(0);
+    expect(quote.canBuy).toBe(false);
+    expect(quote.cost).toBe(five);
+    expect(buy(state, 0, "rank")).toBe(0);
+    expect(state.businesses.youtube[0].owned).toBe(20);
+    expect(state.views).toBe(three * 1.001);
+
+    state.views = five;
+    expect(quotedBuy(state, 0, "rank").canBuy).toBe(true);
+    expect(buy(state, 0, "rank")).toBe(5);
+    expect(state.businesses.youtube[0].owned).toBe(25);
   });
 
   it("treats 100 as all-or-nothing", () => {
@@ -311,6 +322,16 @@ describe("outside advice", () => {
     const before = potentialVps("youtube", 0, 24, 1);
     const after = potentialVps("youtube", 0, 25, 1);
     expect(after).toBeGreaterThan(before * 2);
+  });
+
+  it("does not score RANK when the full gap is unaffordable", () => {
+    const state = newGame();
+    state.businesses.youtube[0].owned = 20;
+    const def = BUSINESSES.youtube[0];
+    const three = buyCost(def.baseCost, def.costMult, 20, 3);
+    state.views = three * 1.001;
+    expect(buyScore(state, 0, "rank")).toBeNull();
+    expect(adviseFarm(state, "rank").bestIndex).not.toBe(0);
   });
 });
 
@@ -621,7 +642,8 @@ describe("BEST is honest", () => {
     const state = newGame();
     state.businesses.youtube[0].owned = 24;
     state.businesses.youtube[1].owned = 1;
-    state.views = 10_000;
+    const fullRank1 = buyCost(BUSINESSES.youtube[1].baseCost, BUSINESSES.youtube[1].costMult, 1, 24);
+    state.views = Math.max(10_000, fullRank1) * 1.01;
     const rankAdvice = adviseFarm(state, "rank");
     const s0 = buyScore(state, 0, "rank");
     const s1 = buyScore(state, 1, "rank");
