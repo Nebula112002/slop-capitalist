@@ -190,11 +190,29 @@ describe("loop", () => {
     expect(state.businesses.youtube[0].running).toBe(false);
   });
 
-  it("auto-starts owned bars so the farm screen can progress without a tap", () => {
+  it("never runs an unmanaged bar on its own", () => {
     const state = newGame();
     expect(state.businesses.youtube[0].running).toBe(false);
-    tick(state, 0.61);
-    expect(state.views).toBeGreaterThan(0);
+    tick(state, 5);
+    expect(state.views).toBe(0);
+    expect(state.businesses.youtube[0].progress).toBe(0);
+  });
+
+  it("pays one cycle per tap until a manager takes over", () => {
+    const state = newGame();
+    const session = newTapSession();
+    expect(tapBar(state, 0, session, 1_000)).toBe("start");
+    tick(state, 5);
+    const afterOne = state.views;
+    expect(afterOne).toBeGreaterThan(0);
+    expect(state.businesses.youtube[0].running).toBe(false);
+
+    tick(state, 5);
+    expect(state.views).toBe(afterOne);
+
+    expect(tapBar(state, 0, session, 2_000)).toBe("start");
+    tick(state, 5);
+    expect(state.views).toBeCloseTo(afterOne * 2, 8);
   });
 
   it("managers keep running", () => {

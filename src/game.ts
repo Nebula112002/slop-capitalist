@@ -548,7 +548,9 @@ export function tick(state: GameState, dtSec: number, session?: TapSession, now 
     for (let i = 0; i < defs.length; i++) {
       const row = rows[i];
       if (row.owned <= 0) continue;
-      if (row.manager || !row.running) row.running = true;
+      // Only managers run themselves. An unmanaged row runs the one cycle you
+      // tapped for and then stops, which is the whole point of hiring anyone.
+      if (row.manager) row.running = true;
       if (!row.running) continue;
       const cycle = cycleSecFor(defs[i].cycleSec, row.owned, state.shop?.tempo ?? 0);
       row.progress += dtSec / cycle;
