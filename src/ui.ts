@@ -676,11 +676,11 @@ function renderChestUpgrade(state: GameState): string {
   const can = canBuyChestUpgrade(state);
   return `
     <section class="list-block">
-      <h3>Idle chest ${rank}/${IDLE_CHEST_MAX_RANK}</h3>
-      <article class="list-row">
+      <h3 data-chest-rank>Idle chest ${rank}/${IDLE_CHEST_MAX_RANK}</h3>
+      <article class="list-row" data-shop-row="chest">
         <span class="list-copy">
           <strong>Longer chest</strong>
-          <small>Fills up to ${formatTime(preview.durationMs)} at ${Math.round(preview.rate * 100)}% of manager views. Away 60s+ to claim.</small>
+          <small data-chest-blurb>Fills up to ${formatTime(preview.durationMs)} at ${Math.round(preview.rate * 100)}% of manager views. Away 60s+ to claim.</small>
         </span>
         <button class="pill" data-chest-up ${maxed || !can ? "disabled" : ""}>
           ${maxed ? "Max" : `Buy \u00b7 ${formatNum(cost)}`}
@@ -693,16 +693,16 @@ function renderChestUpgrade(state: GameState): string {
 function renderHypeShop(state: GameState): string {
   return `
     <section class="list-block">
-      <h3>Hype shop \u00b7 ${formatNum(state.hype)} banked</h3>
+      <h3 data-hype-bank>Hype shop \u00b7 ${formatNum(state.hype)} banked</h3>
       ${HYPE_SHOP.map((item) => {
         const level = shopLevel(state, item.id);
         const maxed = level >= item.max;
         const cost = shopCost(item.id, level);
         const can = canBuyShop(state, item.id);
         return `
-          <article class="list-row ${maxed ? "is-done" : ""}">
+          <article class="list-row ${maxed ? "is-done" : ""}" data-shop-row="${item.id}">
             <span class="list-copy">
-              <strong>${item.name} <span class="list-level">${level}/${item.max}</span></strong>
+              <strong>${item.name} <span class="list-level" data-shop-level="${item.id}">${level}/${item.max}</span></strong>
               <small>${item.blurb}</small>
             </span>
             <button class="pill ${can ? "is-hot" : ""}" data-shop-buy="${item.id}" ${can ? "" : "disabled"}>
@@ -1553,6 +1553,12 @@ function patchManagers(root: HTMLElement, state: GameState): void {
     const def = BUSINESSES[planet]?.[index];
     const row = state.businesses[planet]?.[index];
     if (!def || !row) return;
+    btn.closest(".list-row")?.classList.toggle("is-done", row.manager);
+    btn.closest(".list-row")?.classList.toggle("is-dim", row.owned <= 0);
+    const copy = btn.closest(".list-row")?.querySelector("small");
+    if (copy) {
+      copy.textContent = row.owned <= 0 ? "Own one first" : row.manager ? "On autopilot" : def.managerName;
+    }
     if (row.manager) {
       btn.disabled = true;
       btn.textContent = "Managed";
@@ -1562,6 +1568,44 @@ function patchManagers(root: HTMLElement, state: GameState): void {
     btn.disabled = row.owned <= 0 || state.views < cost;
     btn.textContent = `Hire \u00b7 ${formatNum(cost)}`;
   });
+}
+
+function patchHypeShop(root: HTMLElement, state: GameState): void {
+  const bank = root.querySelector("[data-hype-bank]");
+  if (bank) bank.textContent = `Hype shop \u00b7 ${formatNum(state.hype)} banked`;
+  for (const item of HYPE_SHOP) {
+    const level = shopLevel(state, item.id);
+    const maxed = level >= item.max;
+    const can = canBuyShop(state, item.id);
+    const row = root.querySelector<HTMLElement>(`[data-shop-row="${item.id}"]`);
+    row?.classList.toggle("is-done", maxed);
+    const lvl = root.querySelector(`[data-shop-level="${item.id}"]`);
+    if (lvl) lvl.textContent = `${level}/${item.max}`;
+    const btn = root.querySelector<HTMLButtonElement>(`[data-shop-buy="${item.id}"]`);
+    if (!btn) continue;
+    btn.disabled = !can;
+    btn.classList.toggle("is-hot", can);
+    btn.textContent = maxed ? "Max" : `${formatNum(shopCost(item.id, level))} Hype`;
+  }
+}
+
+function patchChestUpgrade(root: HTMLElement, state: GameState): void {
+  const heading = root.querySelector("[data-chest-rank]");
+  const blurb = root.querySelector("[data-chest-blurb]");
+  const btn = root.querySelector<HTMLButtonElement>("[data-chest-up]");
+  if (!heading && !btn) return;
+  const preview = previewIdleChest(state, 0);
+  const rank = preview.rank;
+  const maxed = rank >= IDLE_CHEST_MAX_RANK;
+  const can = canBuyChestUpgrade(state);
+  if (heading) heading.textContent = `Idle chest ${rank}/${IDLE_CHEST_MAX_RANK}`;
+  if (blurb) {
+    blurb.textContent = `Fills up to ${formatTime(preview.durationMs)} at ${Math.round(preview.rate * 100)}% of manager views. Away 60s+ to claim.`;
+  }
+  if (btn) {
+    btn.disabled = maxed || !can;
+    btn.textContent = maxed ? "Max" : `Buy \u00b7 ${formatNum(chestUpgradeCost(rank))}`;
+  }
 }
 
 function patchEvent(root: HTMLElement, state: GameState, now: number): void {
@@ -1640,6 +1684,8 @@ export function patchMeters(
   if (sheetHire) sheetHire.disabled = !hireHot;
   if (root.querySelector("[data-claim-drop]")) patchEvent(root, state, clock);
   if (root.querySelector("[data-claim-pass]")) patchPass(root, state);
+  if (root.querySelector("[data-hype-bank], [data-shop-buy]")) patchHypeShop(root, state);
+  if (root.querySelector("[data-chest-up]")) patchChestUpgrade(root, state);
   if (view.screen === "outside") patchOutsideRows(root, state, buyMode, view.selected);
   else if (view.screen === "inside") patchInside(root, state, view.selected);
 
@@ -1676,43 +1722,43 @@ export function flashNudge(root: HTMLElement): void {
   }, 220);
 }
 
+function bump(el: HTMLElement | null, cls: string, ms: number): void {
+  if (!el) return;
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+  window.setTimeout(() => el.classList.remove(cls), ms);
+}
+
 /** Upload juice: the tapped icon dips so a manual cycle feels like a press. */
 export function pulseRun(root: HTMLElement, index: number): void {
   const btn = root.querySelector<HTMLElement>(`[data-row="${index}"] [data-row-run]`);
   const target = btn ?? root.querySelector<HTMLElement>("[data-inside-bar]");
-  if (!target) return;
-  target.classList.remove("is-tap");
-  void target.offsetWidth;
-  target.classList.add("is-tap");
-  window.setTimeout(() => target.classList.remove("is-tap"), 200);
+  bump(target, "is-tap", 200);
 }
 
-/** Buy juice: the row thumps, the counter pops, a gain chip floats off the row. */
+/** Buy juice: the row thumps and glitches, the counter pops, a gain chip floats off. */
 export function flashBuy(root: HTMLElement, index: number, count: number): void {
-  const wallet = root.querySelector<HTMLElement>("#views");
-  if (wallet) {
-    wallet.classList.remove("is-pop");
-    void wallet.offsetWidth;
-    wallet.classList.add("is-pop");
-    window.setTimeout(() => wallet.classList.remove("is-pop"), 320);
-  }
-  const button = root.querySelector<HTMLElement>("[data-dock-buy], [data-buy-best]");
-  if (button) {
-    button.classList.remove("is-punch");
-    void button.offsetWidth;
-    button.classList.add("is-punch");
-    window.setTimeout(() => button.classList.remove("is-punch"), 260);
-  }
+  bump(root.querySelector<HTMLElement>("#views"), "is-pop", 320);
+  bump(root.querySelector<HTMLElement>("[data-dock-buy], [data-buy-best]"), "is-punch", 260);
   const row = root.querySelector<HTMLElement>(`[data-row="${index}"]`);
   if (!row) return;
-  row.classList.add("is-bought");
-  window.setTimeout(() => row.classList.remove("is-bought"), 420);
+  bump(row, "is-bought", 420);
   const gain = root.ownerDocument.createElement("span");
   gain.className = "gain-pop";
   gain.textContent = `+${formatNum(count)}`;
   gain.setAttribute("aria-hidden", "true");
   row.appendChild(gain);
   window.setTimeout(() => gain.remove(), 700);
+}
+
+/** Hype/chest juice: glitch the bought row, punch the pill, pop the Hype chip. */
+export function flashShop(root: HTMLElement, id: string): void {
+  bump(root.querySelector<HTMLElement>("#hype"), "is-pop", 320);
+  bump(root.querySelector<HTMLElement>("[data-hype-bank]"), "is-pop", 320);
+  const row = root.querySelector<HTMLElement>(`[data-shop-row="${id}"]`);
+  bump(row, "is-glitch", 380);
+  bump(row?.querySelector("button") ?? null, "is-punch", 260);
 }
 
 let toastTimer = 0;

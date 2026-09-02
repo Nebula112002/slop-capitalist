@@ -1,4 +1,4 @@
-export type JuiceKind = "buy" | "hire" | "prestige" | "chest" | "claim" | "tap" | "rank";
+export type JuiceKind = "buy" | "hire" | "prestige" | "chest" | "claim" | "tap" | "rank" | "glitch";
 
 type Voice = {
   /** Start and end frequency. A gap between them is a slide. */
@@ -16,6 +16,10 @@ const VOICES: Record<JuiceKind, Voice[]> = {
   buy: [
     { from: 300, to: 620, dur: 0.09, type: "triangle", gain: 0.05 },
     { from: 900, dur: 0.06, type: "sine", gain: 0.025, delay: 0.045 },
+  ],
+  glitch: [
+    { from: 220, to: 880, dur: 0.07, type: "sawtooth", gain: 0.028 },
+    { from: 1400, to: 420, dur: 0.08, type: "square", gain: 0.018, delay: 0.04 },
   ],
   rank: [
     { from: 520, dur: 0.1, type: "triangle", gain: 0.04 },

@@ -2,12 +2,13 @@
 import { describe, expect, it } from "vitest";
 import { BUSINESSES, PRESTIGE_AT, UI_ROUTE_KEY } from "./data";
 import { formatNum } from "./format";
-import { adviseFarm, hireManager, newGame, prestige, quotedBuy, type BuyMode } from "./game";
+import { adviseFarm, buyShop, hireManager, newGame, prestige, quotedBuy, type BuyMode } from "./game";
 import {
   algoVisible,
   bestButtonText,
   buyButtonText,
   dockHintText,
+  flashShop,
   hasSaveProgress,
   persistUiRoute,
   readUiRoute,
@@ -272,6 +273,36 @@ describe("farm chrome", () => {
     expect(root.textContent).toContain("Hype shop");
     expect(root.textContent).not.toContain("Permanent +");
     expect(root.textContent).not.toContain("Enter the algorithm");
+  });
+
+  it("patches a hype buy without remounting the prestige sheet", () => {
+    const root = document.createElement("div");
+    const state = newGame();
+    state.hype = 20;
+    state.prestigeCount = 1;
+    renderApp(root, state, 1, farm, "prestige", noop);
+    const card = root.querySelector("[data-sheet-card]");
+    const row = root.querySelector('[data-shop-row="viral"]');
+    expect(root.querySelector<HTMLButtonElement>('[data-shop-buy="viral"]')?.disabled).toBe(false);
+    expect(buyShop(state, "viral")).toBe(true);
+    patchMeters(root, state, 1, farm);
+    expect(root.querySelector("[data-sheet-card]")).toBe(card);
+    expect(root.querySelector('[data-shop-row="viral"]')).toBe(row);
+    expect(root.querySelector("[data-hype-bank]")?.textContent).toBe(`Hype shop \u00b7 ${formatNum(state.hype)} banked`);
+    expect(root.querySelector('[data-shop-level="viral"]')?.textContent).toBe("1/20");
+    expect(root.querySelector("#hype")?.textContent).toBe(`Hype ${formatNum(state.hype)}`);
+  });
+
+  it("glitches the bought hype row", () => {
+    const root = document.createElement("div");
+    const state = newGame();
+    state.hype = 20;
+    state.prestigeCount = 1;
+    renderApp(root, state, 1, farm, "prestige", noop);
+    flashShop(root, "viral");
+    expect(root.querySelector('[data-shop-row="viral"]')?.classList.contains("is-glitch")).toBe(true);
+    expect(root.querySelector('[data-shop-buy="viral"]')?.classList.contains("is-punch")).toBe(true);
+    expect(root.querySelector("[data-hype-bank]")?.classList.contains("is-pop")).toBe(true);
   });
 
   it("enables prestige confirm when this-run hits the bar", () => {

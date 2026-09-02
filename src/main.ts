@@ -39,6 +39,7 @@ import {
 import {
   flashBuy,
   flashNudge,
+  flashShop,
   hasSaveProgress,
   patchMeters,
   persistUiRoute,
@@ -95,6 +96,10 @@ function session(): UiSession {
 function persistState(): void {
   if (!currentUser) return;
   persist(state, store, currentUser);
+}
+
+function refresh(): void {
+  patchMeters(root, state, buyMode, view, Date.now());
 }
 
 function persistRoute(screen: "landing" | "farm"): void {
@@ -172,10 +177,13 @@ const handlers: UiHandlers = {
     if (!result) return;
     const def = BUSINESSES[state.planet][result.index];
     const ownedNow = state.businesses[state.planet][result.index].owned;
+    const ownedBefore = ownedNow - result.count;
     const mark = nextMilestone(ownedNow - result.count);
     persistState();
+    const sameRow = view.selected === result.index;
     view = { ...view, selected: result.index };
-    rebuild();
+    if (ownedBefore <= 0 || !sameRow) rebuild();
+    else refresh();
     playJuice("buy", state.muted);
     flashBuy(root, result.index, result.count);
     if (mark !== null && ownedNow >= mark) {
@@ -190,10 +198,12 @@ const handlers: UiHandlers = {
     const def = BUSINESSES[state.planet][index];
     if (!row || !def) return;
     const mark = nextMilestone(row.owned);
+    const ownedBefore = row.owned;
     const n = buy(state, index, buyMode);
     if (n > 0) {
       persistState();
-      rebuild();
+      if (ownedBefore <= 0) rebuild();
+      else refresh();
       playJuice("buy", state.muted);
       flashBuy(root, index, n);
       if (mark !== null && row.owned >= mark) {
@@ -220,7 +230,7 @@ const handlers: UiHandlers = {
     const def = BUSINESSES[target][index];
     if (hireManager(state, index, target)) {
       persistState();
-      rebuild();
+      refresh();
       playJuice("hire", state.muted);
       showToast(pickFlavor("manager", { name: def?.name ?? "this bar" }));
     }
@@ -229,7 +239,7 @@ const handlers: UiHandlers = {
     const n = hireAllAffordable(state);
     if (n <= 0) return;
     persistState();
-    rebuild();
+    refresh();
     playJuice("hire", state.muted);
     showToast(`Hired ${n}. Those bars run themselves.`);
   },
@@ -356,8 +366,9 @@ const handlers: UiHandlers = {
   onBuyChestUpgrade() {
     if (!buyChestUpgrade(state)) return;
     persistState();
-    rebuild();
-    playJuice("buy", state.muted);
+    refresh();
+    playJuice("glitch", state.muted);
+    flashShop(root, "chest");
     showToast("Chest lasts longer. Rate ticked up.");
   },
   onSignIn(username) {
@@ -366,8 +377,9 @@ const handlers: UiHandlers = {
   onBuyShop(id) {
     if (!buyShop(state, id)) return;
     persistState();
-    rebuild();
-    playJuice("buy", state.muted);
+    refresh();
+    playJuice("glitch", state.muted);
+    flashShop(root, id);
     showToast("Hype spent. That upgrade stays.");
   },
   onNewRun() {
