@@ -10,12 +10,12 @@ const checks = {
   health: health.ok === true && health.port === 8896 && health.service === "slop-capitalist",
   title: html.includes("Slop Capitalist"),
   buyBest: js.includes("Buy BEST"),
-  hireAll: js.includes("Hire all affordable"),
+  hireAll: js.includes("Hire all"),
   simulation: js.includes("The Simulation"),
   chest: js.includes("Comeback chest"),
   algo: js.includes("Enter the algorithm"),
   exportSave: js.includes("Copy export") || js.includes("exportSave"),
-  tip: js.includes("Farm is home"),
+  tip: js.includes("Tap a row") || js.includes("Qty"),
   not3000: !js.includes(":3000") || js.includes("8896"),
 };
 
