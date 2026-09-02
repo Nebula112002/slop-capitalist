@@ -22,7 +22,7 @@ try {
   notes.push(
     `pitch points: aim=${has(land, "Tap a farm")} farm=${has(land, "farm is the game")} prestige=${has(land, "Prestige when the chip fills")}`,
   );
-  notes.push(`dumped into farm: ${has(land, "YouTube farm")}`);
+  notes.push(`dumped into farm: ${has(land, "The Tube farm")}`);
   notes.push(`dead Continue on a fresh browser: ${(await page.locator("[data-continue]").count()) > 0}`);
   notes.push(`player field: ${has(land, "Player name")}`);
   await page.screenshot({ path: "docs/playtest-landing.png", fullPage: true });
@@ -32,9 +32,9 @@ try {
   await page.getByRole("button", { name: "Start posting" }).click();
   await page.waitForSelector("[data-dock-buy]");
   const farm = await page.locator("body").innerText();
-  notes.push(`after Start posting: ${has(farm, "YouTube farm") ? "straight to the farm" : "NOT farm"}`);
+  notes.push(`after Start posting: ${has(farm, "The Tube farm") ? "straight to the farm" : "NOT farm"}`);
   notes.push(`default mint is the selected row: ${has(farm, "Cursed Short") && !has(farm, "Buy BEST")}`);
-  notes.push(`prestige card eating the fold: ${has(farm, "Unlock TikTok")}`);
+  notes.push(`prestige card eating the fold: ${has(farm, "Unlock The Feed")}`);
   notes.push(`header BEST repeat: ${/Best:\s+\d/.test(farm)}`);
   notes.push(`Algo on a fresh farm: ${has(farm, "Algo 1.00")}`);
   notes.push(`chip teaching line: ${(await page.locator("[data-dock-hint]").innerText()).trim()}`);

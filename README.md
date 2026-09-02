@@ -2,7 +2,9 @@
 
 Idle tycoon. Farm the algorithm. One cursed short at a time.
 
-AdVenture Capitalist loop, content-farm costume. Browser toy that can grow into a product.
+Idle-tycoon loop, content-farm costume. Browser toy that can grow into a product.
+
+Parody of algorithmic video platforms in general. Not affiliated with, endorsed by, or connected to any real platform or company.
 
 **Home:** this folder on the PC. **Port:** `8896`. Not the warehouse. Never `:3000`.
 
@@ -34,7 +36,7 @@ Stop: `.\scripts\stop.ps1`
 ## Toy v0
 
 - Currency: **Views**
-- Planets: YouTube → TikTok (1st prestige) → **The Simulation** (2nd prestige)
+- Planets: The Tube → The Feed (1st prestige) → **The Simulation** (2nd prestige)
 - **Tap a row's icon to post one clip.** Only a hired manager runs a farm on its own
 - Income x2 at 25 / 50 / 100 / … · cycle time **halves at 25 / 100 / 400 / 1000** (floor 0.25s)
 - Offline progress (managers only, 8h cap)
@@ -55,9 +57,19 @@ split, the a11y checklist, recipes, and the traps. What shipped and why is in
 [`docs/PLAYTEST.md`](docs/PLAYTEST.md); the brief is
 [`docs/OPUS.md`](docs/OPUS.md). Monetization: not this pass.
 
+## Legal
+
+- [Privacy policy](docs/PRIVACY.md) — nothing is collected, nothing is sent, and how to delete what is stored locally
+- [Terms of use](docs/TERMS.md) — MIT, no warranty, nothing for sale
+- [Third-party notices](docs/THIRD-PARTY.md) — the fonts are the only thing that ships that isn't ours
+- [Legal notes](docs/LEGAL-NOTES.md) — what was fixed, what still needs a human. **Not legal advice.**
+
+In the game: **Menu → Privacy & legal**. Fonts are self-hosted, so the app makes
+no third-party requests. `src/legal.test.ts` keeps it that way.
+
 ## Stack
 
-Vite + TypeScript. No React. No backend. No ads.
+Vite + TypeScript. No React. No backend. No ads. No runtime dependencies.
 
 ```powershell
 npm install

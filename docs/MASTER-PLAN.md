@@ -2,6 +2,12 @@
 
 **Status:** shipped. This file is the **decision archive** (numbers, prestige re-lock, outside/inside, BEST math). Do not implement leftover chrome from here.
 
+> **Stale names.** This archive describes the planets as YouTube and TikTok,
+> which is what they were called while it was written. They shipped as **The
+> Tube** and **The Feed** — no real brand appears in the game. The internal ids
+> (`youtube`, `tiktok`) are unchanged because they are save data. See
+> [`docs/LEGAL-NOTES.md`](LEGAL-NOTES.md).
+
 **Leftovers**
 
 1. **Opus pass** — [`docs/OPUS.md`](OPUS.md)

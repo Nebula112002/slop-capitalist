@@ -6,6 +6,68 @@ Leftovers: [`docs/OPUS.md`](OPUS.md). **Monetization: do not touch / not this pa
 
 ---
 
+# Pass 4 — compliance
+
+**Date:** 2026-09-02 · `npm test` (114) + `npm run build` green ·
+**zero external requests across a whole session** · no console errors
+
+Asked for "fully legally compliant". That is not a state a repo can be put in
+by an agent, and I am not a lawyer — but there were real, concrete problems in
+the code. Full record and the honest open list:
+[`docs/LEGAL-NOTES.md`](LEGAL-NOTES.md).
+
+**Two actual problems, both fixed.**
+
+1. **The game shipped other companies' live trademarks as content.** The
+   planets were literally named *YouTube* and *TikTok*, with *FYP* / "For You
+   page" in reward and copy text — and the plan was to submit that to Google
+   Play, i.e. hand Google its own trademark as a level name. Renamed to
+   invented generics: **The Tube**, **The Feed**, The Simulation, plus
+   `Mirror Chain`, `You Are The Feed`, `Mirror Storm`, `Feed Stamp`.
+   **The ids were left frozen on purpose** — `state.planet` is still
+   `"youtube"`, and `"fyp"` is still a pass-tier id, because those strings are
+   save data and renaming them would orphan real progress.
+2. **Every page load handed a third party the player's IP.** Three font
+   families came from `fonts.googleapis.com`. That is an undisclosed personal
+   data transfer, and a German court has awarded damages for exactly it. The
+   fonts are now vendored into `public/fonts` by `scripts/fetch-fonts.mjs`
+   (Latin + Latin-Ext, with both SIL OFL 1.1 licence texts bundled as the
+   licence requires). Verified in a live browser: **no request leaves the
+   origin, and the self-hosted faces actually apply.** No CDN means no consent
+   banner to argue about. Three glyphs (`✕ ◉ →`) fell outside the vendored
+   subsets and were swapped for in-subset equivalents.
+
+**Two things that were missing rather than wrong.**
+
+3. **Nothing told the player anything.** There was no policy, no terms, no
+   attribution. Now `docs/PRIVACY.md`, `docs/TERMS.md` and
+   `docs/THIRD-PARTY.md` exist — and, more usefully, a **Privacy & legal**
+   sheet is reachable in-app from the menu, from settings, and from the landing
+   footer *before signing in*. It states what is stored, that nothing is
+   transmitted or for sale, the font attributions, no warranty, and that this
+   is unaffiliated parody.
+4. **"Delete my data" was not actually possible.** Reset only cleared the
+   current player's key, so a save from an older build or another name
+   survived. `clearAllLocalData()` prefix-scans and removes every
+   `slop-capitalist*` key. Verified live: two players and six keys go to zero
+   and the app drops back to a signed-out start screen. With the existing JSON
+   export, access, portability and erasure are all real buttons.
+
+**Kept honest.** `src/legal.test.ts` fails if anyone puts a brand name back
+into a player-facing string or a rendered surface, renames a save-critical id,
+reintroduces a CDN or any `https://` runtime request, drops the bundled font
+licences, or removes the "not affiliated" line.
+
+**Still open, and not mine to decide:** the product name's proximity to
+*AdVenture Capitalist*, a choice-of-law clause, the copyright holder's legal
+name, and everything about Play Store submission — developer account, a
+*public* privacy-policy URL, the Data safety declaration, the IARC content
+rating, and a wrapper, since `127.0.0.1:8896` is not a submittable artifact.
+Note that hosting it publicly for a TWA would put a real web server in the path
+and change the privacy answer. All of that is listed in `LEGAL-NOTES.md`.
+
+---
+
 # Pass 3 — the auto-play bug, and app-shell polish
 
 **Date:** 2026-09-02 · `npm test` (105) + `npm run build` green · playtest green ·

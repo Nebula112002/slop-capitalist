@@ -274,7 +274,7 @@ Screenshots land in `docs/playtest-landing.png` and `docs/playtest-home.png`.
 ## 10. Traps (each of these cost real time)
 
 1. **`innerText` applies `text-transform`.** `.farm-name` is uppercased in CSS,
-   so `innerText().includes("YouTube farm")` is false. The playtest has a
+   so `innerText().includes("The Tube farm")` is false. The playtest has a
    `has()` helper that compares case-insensitively. Use it.
 2. **`vite preview` serves `dist`.** `start.ps1` runs preview by default, so a
    source edit does nothing until `npm run build`. Use `start.ps1 -Dev` for hot
@@ -302,6 +302,14 @@ Screenshots land in `docs/playtest-landing.png` and `docs/playtest-home.png`.
     caching a bundle on a machine that rebuilds constantly is a staleness
     footgun. If you ever want the Android install banner, add a pass-through
     fetch handler and nothing more.
+11. **No third-party requests, and no real brand names.** Fonts are vendored
+    into `public/fonts` by `scripts/fetch-fonts.mjs` precisely so no player IP
+    reaches a CDN; planets are The Tube / The Feed / The Simulation while the
+    `youtube` / `tiktok` **ids** stay frozen because they are save data.
+    `src/legal.test.ts` fails on either regression. Reasons:
+    [`LEGAL-NOTES.md`](LEGAL-NOTES.md).
+12. **Only the vendored Latin subsets exist.** A glyph outside them (`✕`, `◉`,
+    `→` all were) falls back or shows tofu. Prefer `×`, `•`, `·`, `—`, `›`.
 
 ---
 
