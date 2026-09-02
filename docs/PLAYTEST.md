@@ -3,7 +3,7 @@
 **Date:** 2026-09-02  
 **Port:** `8896` (preview after `.\scripts\start.ps1`)
 
-Leftovers: [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md). **Monetization: do not touch / not this pass.**
+Leftovers: [`docs/OPUS.md`](OPUS.md). **Monetization: do not touch / not this pass.**
 
 The suck list below is historical (pre-landing cleanup). Do not re-implement chrome from it.
 
@@ -67,5 +67,5 @@ Items 1–12 are Opus chrome / optional economy feel. Do not re-litigate them fr
 
 ## What’s left for Caleb
 
-- **Opus pass** — [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md)
+- **Opus pass** — [`docs/OPUS.md`](OPUS.md)
 - **Monetization: do not touch / not this pass.**

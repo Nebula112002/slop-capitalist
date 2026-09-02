@@ -4,7 +4,7 @@
 
 **Leftovers**
 
-1. **Opus pass** — [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md)
+1. **Opus pass** — [`docs/OPUS.md`](OPUS.md)
 2. **Monetization** — do not touch / not this pass. No IAP, ads, Stripe, or a paid prestige shop.
 
 Username sign-in, prestige → Hype, idle-chest ranks, and selected-row buy + BEST as a mode chip already shipped. Do not regress them.
@@ -21,7 +21,7 @@ Two earlier passes raced and left overlapping scraps (`docs/BACK-BURNER.md`, `do
 
 - **Archive.** Phases P0–5 and the leftover extras loop already shipped in the live toy. Do not re-litigate numbers from chat.
 - Theme stays content-farm / algorithm idle. Do not reskin.
-- **Future work is not in this file.** Opus: [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md). Monetization: do not touch / not this pass.
+- **Future work is not in this file.** Opus: [`docs/OPUS.md`](OPUS.md). Monetization: do not touch / not this pass.
 
 ---
 
@@ -863,7 +863,7 @@ The new idea. Depends on chrome existing so both views share a frame.
 
 ### Phase 6 — later, not this file's job
 
-**Opus** owns the next visual / IA pass: [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md).
+**Opus** owns the next visual / IA pass: [`docs/OPUS.md`](OPUS.md).
 
 **Monetization:** do not touch / not this pass.
 
@@ -941,14 +941,14 @@ Answered in play, or moved:
 
 **Still open, and not for a drive-by:**
 
-- Visual / IA overhaul → [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md)
+- Visual / IA overhaul → [`docs/OPUS.md`](OPUS.md)
 - **Monetization: do not touch / not this pass.**
 
 ---
 
 ## Implementer notes
 
-Touched files for the **Opus** pass are listed in `docs/OPUS-GUIDELINES.md`. Do not start from the phase table above unless you are debugging history.
+Touched files for the **Opus** pass are listed in [`docs/OPUS.md`](OPUS.md). Do not start from the phase table above unless you are debugging history.
 
 Do not publish. Do not edit d-ai maps for this.
 
@@ -960,6 +960,7 @@ Do not publish. Do not edit d-ai maps for this.
 |---|---|
 | `docs/BACK-BURNER.md` | Leftover pointer: Opus + monetization-left-alone |
 | `docs/PRESTIGE-GATE.md` | Historical P0 prestige write-up (also §8 here). Shipped. |
-| `docs/UI-UX.md` | Pointer at Opus |
-| `docs/OPUS-GUIDELINES.md` | Next visual / IA pass |
+| `docs/UI-UX.md` | Stub → `docs/OPUS.md` |
+| `docs/OPUS-GUIDELINES.md` | Stub → `docs/OPUS.md` |
+| `docs/OPUS.md` | The only Opus brief (visual / IA overhaul) |
 | `docs/PLAYTEST.md` | Honest playtest notes from 2026-09-02 |

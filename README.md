@@ -42,7 +42,7 @@ Stop: `.\scripts\stop.ps1`
 - Save: `localStorage` key `slop-capitalist.v1` plus per-username keys (`slop-capitalist.v1.<slug>`). Username only. No password.
 - Prestige banks **Hype** (shop in the prestige sheet). First bar 1M this-run, then 1B, then The Simulation.
 - Idle **comeback chest**: 25% of manager VPS on top of away earnings, ranks in settings.
-- Next visual pass: `docs/OPUS-GUIDELINES.md` (Opus). Monetization: not this pass.
+- Next visual pass: `docs/OPUS.md` (Opus). Monetization: not this pass.
 
 You start with one cursed short. Tap the bar. Buy more. Hire a gremlin. Walk away.
 
