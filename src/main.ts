@@ -1,4 +1,4 @@
-import { BUSINESSES, SAVE_KEY } from "./data";
+import { BUSINESSES } from "./data";
 import { playJuice } from "./audio";
 import { pickFlavor, resetFlavorSession } from "./flavor";
 import { formatNum } from "./format";
@@ -7,6 +7,7 @@ import {
   applyOffline,
   buy,
   buyBest,
+  buyShop,
   canAlgo,
   claimChest,
   claimEventDrop,
@@ -18,6 +19,7 @@ import {
   hireAllAffordable,
   hireManager,
   importSave,
+  newGame,
   newTapSession,
   nextMilestone,
   nextPlanetName,
@@ -44,16 +46,31 @@ import {
   showToast,
   type MoreSheet,
   type UiHandlers,
+  type UiSession,
   type UiSheet,
   type UiView,
 } from "./ui";
+import {
+  claimLegacySave,
+  clearUserSave,
+  isValidUsername,
+  normalizeUsername,
+  readUserIndex,
+  rememberUser,
+  usernameSlug,
+} from "./users";
 import "./styles.css";
 
 const mount = document.querySelector<HTMLElement>("#app");
 if (!mount) throw new Error("#app missing");
 const root = mount;
+const store = localStorage;
 
-let state: GameState = readStorage();
+let users = readUserIndex(store);
+let currentUser = users.last;
+if (currentUser) claimLegacySave(currentUser, store);
+
+let state: GameState = currentUser ? readStorage(store, currentUser) : newGame();
 let buyMode: BuyMode = 1;
 let view: UiView = bootView(state, buyMode);
 let sheet: UiSheet = view.screen === "landing" ? null : state.pendingChest ? "chest" : null;
@@ -64,7 +81,20 @@ let saveAt = 0;
 const away = applyOffline(state);
 offerComebackChest(state, away.earned, away.offlineMs);
 if (view.screen !== "landing" && state.pendingChest) sheet = "chest";
-persist(state);
+persistState();
+
+function session(): UiSession {
+  return { username: currentUser, names: users.names };
+}
+
+function persistState(): void {
+  if (!currentUser) return;
+  persist(state, store, currentUser);
+}
+
+function persistRoute(screen: "landing" | "farm"): void {
+  persistUiRoute(screen, undefined, currentUser || undefined);
+}
 
 function homeView(game: GameState, mode: BuyMode, bestMode = false): UiView {
   return { screen: "outside", selected: defaultSelected(game, mode), bestMode };
@@ -75,7 +105,49 @@ function landingView(game: GameState, mode: BuyMode): UiView {
 }
 
 function bootView(game: GameState, mode: BuyMode): UiView {
-  return readUiRoute() === "farm" ? homeView(game, mode) : landingView(game, mode);
+  if (!currentUser) return landingView(game, mode);
+  return readUiRoute(undefined, currentUser) === "farm" ? homeView(game, mode) : landingView(game, mode);
+}
+
+function signIn(raw: string): boolean {
+  if (!isValidUsername(raw)) {
+    showToast("Pick a username. Letters, numbers, spaces.");
+    return false;
+  }
+  const next = normalizeUsername(raw);
+  if (currentUser && usernameSlug(currentUser) !== usernameSlug(next)) {
+    persistState();
+  }
+  users = rememberUser(next, store);
+  currentUser = users.last;
+  claimLegacySave(currentUser, store);
+  state = readStorage(store, currentUser);
+  const loadedAway = applyOffline(state);
+  offerComebackChest(state, loadedAway.earned, loadedAway.offlineMs);
+  buyMode = 1;
+  taps = newTapSession();
+  resetFlavorSession();
+  persistRoute("farm");
+  view = homeView(state, buyMode);
+  sheet = state.pendingChest ? "chest" : null;
+  persistState();
+  rebuild();
+  return true;
+}
+
+function wipeCurrentUser(): void {
+  if (!currentUser) return;
+  clearUserSave(currentUser, store);
+  state = newGame();
+  buyMode = 1;
+  persistRoute("farm");
+  view = homeView(state, buyMode);
+  sheet = null;
+  taps = newTapSession();
+  resetFlavorSession();
+  persistState();
+  rebuild();
+  showToast("Fresh account. Post your first cursed short.");
 }
 
 const handlers: UiHandlers = {
@@ -85,7 +157,7 @@ const handlers: UiHandlers = {
     const def = BUSINESSES[state.planet][result.index];
     const ownedNow = state.businesses[state.planet][result.index].owned;
     const mark = nextMilestone(ownedNow - result.count);
-    persist(state);
+    persistState();
     view = { ...view, selected: result.index };
     rebuild();
     playJuice("buy", state.muted);
@@ -102,7 +174,7 @@ const handlers: UiHandlers = {
     const mark = nextMilestone(row.owned);
     const n = buy(state, index, buyMode);
     if (n > 0) {
-      persist(state);
+      persistState();
       rebuild();
       playJuice("buy", state.muted);
       if (mark !== null && row.owned >= mark) {
@@ -115,7 +187,7 @@ const handlers: UiHandlers = {
   onRun(index) {
     const result = tapBar(state, index, taps);
     if (result === "none") return;
-    persist(state);
+    persistState();
     playJuice("tap", state.muted);
     if (result === "nudge") {
       patchMeters(root, state, buyMode, view, Date.now());
@@ -128,7 +200,7 @@ const handlers: UiHandlers = {
     const target = planet ?? state.planet;
     const def = BUSINESSES[target][index];
     if (hireManager(state, index, target)) {
-      persist(state);
+      persistState();
       rebuild();
       playJuice("hire", state.muted);
       showToast(pickFlavor("manager", { name: def?.name ?? "this bar" }));
@@ -137,7 +209,7 @@ const handlers: UiHandlers = {
   onHireAll() {
     const n = hireAllAffordable(state);
     if (n <= 0) return;
-    persist(state);
+    persistState();
     rebuild();
     playJuice("hire", state.muted);
     showToast(`Hired ${n}. Those bars run themselves.`);
@@ -164,10 +236,10 @@ const handlers: UiHandlers = {
     taps = newTapSession();
     if (gain > 0) {
       view = homeView(state, buyMode, view.bestMode);
-      persist(state);
+      persistState();
       rebuild();
       playJuice("prestige", state.muted);
-      showToast(pickFlavor("prestige", { gain: gain.toFixed(2), name: unlockedName }));
+      showToast(pickFlavor("prestige", { gain: gain.toFixed(1), name: unlockedName }));
       return;
     }
     rebuild();
@@ -183,7 +255,7 @@ const handlers: UiHandlers = {
     taps = newTapSession();
     if (gain > 0) {
       view = homeView(state, buyMode, view.bestMode);
-      persist(state);
+      persistState();
       rebuild();
       playJuice("prestige", state.muted);
       showToast(`Algo +${gain.toFixed(2)}x. Viral reset. The Simulation is open.`);
@@ -221,51 +293,46 @@ const handlers: UiHandlers = {
     rebuild();
   },
   onReset() {
+    if (!currentUser) return;
     if (!window.confirm("Wipe this save? The algorithm forgets you.")) return;
-    localStorage.removeItem(SAVE_KEY);
-    state = readStorage();
-    buyMode = 1;
-    persistUiRoute("farm");
-    view = homeView(state, buyMode);
-    sheet = null;
-    taps = newTapSession();
-    resetFlavorSession();
-    rebuild();
-    showToast("Fresh account. Post your first cursed short.");
+    wipeCurrentUser();
   },
   onOpenSheet(next: MoreSheet) {
     sheet = next;
     rebuild();
   },
   onHome() {
-    persistUiRoute("landing");
+    persistRoute("landing");
     view = landingView(state, buyMode);
     sheet = null;
     rebuild();
   },
   onContinue() {
-    persistUiRoute("farm");
+    if (!currentUser) return;
+    persistRoute("farm");
     view = homeView(state, buyMode, view.bestMode);
     sheet = state.pendingChest ? "chest" : null;
     rebuild();
   },
-  onNewRun() {
-    if (hasSaveProgress(state) && !window.confirm("Wipe this save? The algorithm forgets you.")) return;
-    localStorage.removeItem(SAVE_KEY);
-    state = readStorage();
-    buyMode = 1;
-    persistUiRoute("farm");
-    view = homeView(state, buyMode);
-    sheet = null;
-    taps = newTapSession();
-    resetFlavorSession();
+  onSignIn(username) {
+    signIn(username);
+  },
+  onBuyShop(id) {
+    if (!buyShop(state, id)) return;
+    persistState();
     rebuild();
-    showToast("Fresh account. Post your first cursed short.");
+    playJuice("buy", state.muted);
+    showToast("Hype spent. That upgrade stays.");
+  },
+  onNewRun() {
+    if (!currentUser) return;
+    if (hasSaveProgress(state) && !window.confirm("Wipe this save? The algorithm forgets you.")) return;
+    wipeCurrentUser();
   },
   onClaimDrop() {
     const views = claimEventDrop(state, Date.now());
     if (views <= 0) return;
-    persist(state);
+    persistState();
     rebuild();
     playJuice("claim", state.muted);
     showToast(`Event drop +${formatNum(views)}`);
@@ -273,7 +340,7 @@ const handlers: UiHandlers = {
   onClaimEvent(id) {
     const item = claimEventShop(state, id);
     if (!item) return;
-    persist(state);
+    persistState();
     rebuild();
     playJuice("claim", state.muted);
     showToast(`Claimed ${item.name}`);
@@ -281,7 +348,7 @@ const handlers: UiHandlers = {
   onClaimPass(id) {
     const tier = claimPass(state, id);
     if (!tier) return;
-    persist(state);
+    persistState();
     rebuild();
     playJuice("claim", state.muted);
     showToast(`Pass: ${tier.name}`);
@@ -290,7 +357,7 @@ const handlers: UiHandlers = {
     const views = claimChest(state);
     sheet = null;
     if (views > 0) {
-      persist(state);
+      persistState();
       rebuild();
       playJuice("chest", state.muted);
       showToast(`Comeback chest +${formatNum(views)}`);
@@ -300,7 +367,7 @@ const handlers: UiHandlers = {
   },
   onMute() {
     toggleMute(state);
-    persist(state);
+    persistState();
     rebuild();
     showToast(state.muted ? "Juice muted." : "Juice on.");
   },
@@ -325,10 +392,10 @@ const handlers: UiHandlers = {
     }
     state = loaded;
     taps = newTapSession();
-    persistUiRoute("farm");
+    persistRoute("farm");
     view = homeView(state, buyMode, view.bestMode);
     sheet = state.pendingChest ? "chest" : null;
-    persist(state);
+    persistState();
     rebuild();
     showToast("Save imported.");
   },
@@ -338,13 +405,13 @@ const handlers: UiHandlers = {
   },
   onDismissTip() {
     dismissTooltip(state);
-    persist(state);
+    persistState();
     rebuild();
   },
 };
 
 function rebuild(): void {
-  renderApp(root, state, buyMode, view, sheet, handlers, Date.now());
+  renderApp(root, state, buyMode, view, sheet, handlers, Date.now(), session());
 }
 
 rebuild();
@@ -358,7 +425,7 @@ function frame(now: number): void {
   state.playMs += dt * 1000;
   patchMeters(root, state, buyMode, view, wall);
   if (now - saveAt > 2000) {
-    persist(state);
+    persistState();
     saveAt = now;
   }
   requestAnimationFrame(frame);
@@ -366,12 +433,13 @@ function frame(now: number): void {
 
 requestAnimationFrame(frame);
 
-window.addEventListener("beforeunload", () => persist(state));
+window.addEventListener("beforeunload", () => persistState());
 
 if (import.meta.env.DEV) {
   Object.assign(window, {
     __slop: {
       getState: () => state,
+      getUser: () => currentUser,
       buyBest: () => buyBest(state, buyMode),
       hireAll: () => hireAllAffordable(state),
       prestige: () => prestige(state),
@@ -379,5 +447,5 @@ if (import.meta.env.DEV) {
       exportSave: () => exportSave(state),
     },
   });
-  console.info("Slop Capitalist", { views: formatNum(state.views) });
+  console.info("Slop Capitalist", { user: currentUser, views: formatNum(state.views) });
 }
