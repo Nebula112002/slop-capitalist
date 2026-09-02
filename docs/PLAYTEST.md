@@ -1,8 +1,11 @@
 # Playtest — anti-tedium extras
 
 **Date:** 2026-09-02  
-**Port:** `8896` (preview after `.\scripts\start.ps1`)  
-**How:** unit tests, a multi-minute sim (`npx tsx scripts/playtest-sim.ts`), live `GET /` + bundle checks, and a headless Playwright pass on a cleared save.
+**Port:** `8896` (preview after `.\scripts\start.ps1`)
+
+Leftovers after emptying the back burner: [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md). **Monetization: do not touch / not this pass.**
+
+The suck list below is historical (pre-landing cleanup). Do not re-implement chrome from it.
 
 ## What I actually did
 

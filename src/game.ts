@@ -2,9 +2,8 @@ import {
   ALGO_AT,
   ALGO_PRESTIGE_AT,
   BUSINESSES,
-  CHEST_MIN_MS,
-  CHEST_RATE,
   CLOUT_PER_VIEWS,
+  IDLE_CHEST_MAX_RANK,
   EVENT_PERIOD_MS,
   EVENT_SHOP,
   EVENTS,
@@ -44,6 +43,13 @@ import {
   type RewardKind,
   type ShopLevels,
 } from "./data";
+import {
+  chestUpgradeCost,
+  clampChestRank,
+  fillIdleChest,
+  shouldOfferIdleChest,
+  type IdleChestPreview,
+} from "./idle-chest";
 import { saveKeyFor } from "./users";
 
 export type BuyMode = 1 | 10 | 100 | "max" | "rank";
@@ -87,6 +93,7 @@ export type GameState = {
   event: EventSave;
   pass: PassSave;
   pendingChest: { views: number; offlineMs: number } | null;
+  chestRank: number;
   muted: boolean;
   seenTooltip: boolean;
   playMs: number;
@@ -174,6 +181,7 @@ export function newGame(now = Date.now()): GameState {
     event: emptyEvent(),
     pass: emptyPass(),
     pendingChest: null,
+    chestRank: 0,
     muted: false,
     seenTooltip: false,
     playMs: 0,
@@ -348,6 +356,7 @@ export function loadGame(raw: string | null, now = Date.now()): GameState {
               offlineMs: Math.max(0, Number(parsed.pendingChest.offlineMs) || 0),
             }
           : null,
+      chestRank: clampChestRank(Number((parsed as { chestRank?: unknown }).chestRank) || 0),
       muted: Boolean(parsed.muted),
       seenTooltip: Boolean(parsed.seenTooltip),
       playMs: Math.max(0, Number(parsed.playMs) || 0),
@@ -568,6 +577,27 @@ export function offlineCapMs(state: GameState): number {
   return OFFLINE_CAP_MS + SHOP_OFFLINE_MS * (state.shop?.offline ?? 0);
 }
 
+export function idleManagerVps(state: GameState): number {
+  return globalViewsPerSec({
+    ...state,
+    businesses: {
+      youtube: state.businesses.youtube.map((row) => ({ ...row, running: row.manager })),
+      tiktok: state.businesses.tiktok.map((row) => ({ ...row, running: row.manager })),
+      simulation: state.businesses.simulation.map((row) => ({ ...row, running: row.manager })),
+    },
+  });
+}
+
+export function idleEarnings(state: GameState, durationMs: number): number {
+  const ms = Math.max(0, durationMs);
+  if (ms < 1) return 0;
+  return idleManagerVps(state) * (ms / 1000);
+}
+
+export function previewIdleChest(state: GameState, awayMs: number): IdleChestPreview {
+  return fillIdleChest(awayMs, state.chestRank ?? 0, idleManagerVps(state));
+}
+
 export function applyOffline(
   state: GameState,
   now = Date.now(),
@@ -576,16 +606,7 @@ export function applyOffline(
   const offlineMs = Math.min(elapsed, offlineCapMs(state));
   state.lastTs = now;
   if (offlineMs < 1000) return { earned: 0, offlineMs };
-  const seconds = offlineMs / 1000;
-  const snapshot: GameState = {
-    ...state,
-    businesses: {
-      youtube: state.businesses.youtube.map((row) => ({ ...row, running: row.manager })),
-      tiktok: state.businesses.tiktok.map((row) => ({ ...row, running: row.manager })),
-      simulation: state.businesses.simulation.map((row) => ({ ...row, running: row.manager })),
-    },
-  };
-  const earned = globalViewsPerSec(snapshot) * seconds;
+  const earned = idleEarnings(state, offlineMs);
   credit(state, earned);
   return { earned, offlineMs };
 }
@@ -969,11 +990,35 @@ export function claimChest(state: GameState): number {
   return pending.views;
 }
 
-export function offerComebackChest(state: GameState, earned: number, offlineMs: number): number {
-  if (offlineMs < CHEST_MIN_MS || earned <= 0) return 0;
-  const views = earned * CHEST_RATE;
-  state.pendingChest = { views, offlineMs };
-  return views;
+export function offerComebackChest(state: GameState, offlineMs: number): number {
+  const preview = previewIdleChest(state, offlineMs);
+  if (!shouldOfferIdleChest(preview)) return state.pendingChest?.views ?? 0;
+  const pending = state.pendingChest;
+  if (pending && pending.views >= preview.views) return pending.views;
+  state.pendingChest = { views: preview.views, offlineMs: preview.fillMs };
+  return preview.views;
+}
+
+export function canBuyChestUpgrade(state: GameState): boolean {
+  const rank = clampChestRank(state.chestRank ?? 0);
+  if (rank >= IDLE_CHEST_MAX_RANK) return false;
+  return state.views >= chestUpgradeCost(rank);
+}
+
+export function buyChestUpgrade(state: GameState): boolean {
+  const rank = clampChestRank(state.chestRank ?? 0);
+  if (rank >= IDLE_CHEST_MAX_RANK) return false;
+  const cost = chestUpgradeCost(rank);
+  if (state.views < cost) return false;
+  state.views -= cost;
+  state.chestRank = rank + 1;
+  if (state.pendingChest) {
+    const preview = previewIdleChest(state, state.pendingChest.offlineMs);
+    if (preview.views > 0) {
+      state.pendingChest = { views: preview.views, offlineMs: preview.fillMs };
+    }
+  }
+  return true;
 }
 
 export type Recap = {

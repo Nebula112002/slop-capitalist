@@ -7,6 +7,7 @@ import {
   applyOffline,
   buy,
   buyBest,
+  buyChestUpgrade,
   buyShop,
   canAlgo,
   claimChest,
@@ -79,7 +80,7 @@ let last = performance.now();
 let saveAt = 0;
 
 const away = applyOffline(state);
-offerComebackChest(state, away.earned, away.offlineMs);
+offerComebackChest(state, away.offlineMs);
 if (view.screen !== "landing" && state.pendingChest) sheet = "chest";
 persistState();
 
@@ -123,13 +124,13 @@ function signIn(raw: string): boolean {
   claimLegacySave(currentUser, store);
   state = readStorage(store, currentUser);
   const loadedAway = applyOffline(state);
-  offerComebackChest(state, loadedAway.earned, loadedAway.offlineMs);
+  offerComebackChest(state, loadedAway.offlineMs);
   buyMode = 1;
   taps = newTapSession();
   resetFlavorSession();
-  persistRoute("farm");
-  view = homeView(state, buyMode);
-  sheet = state.pendingChest ? "chest" : null;
+  persistRoute("landing");
+  view = landingView(state, buyMode);
+  sheet = null;
   persistState();
   rebuild();
   return true;
@@ -310,9 +311,18 @@ const handlers: UiHandlers = {
   onContinue() {
     if (!currentUser) return;
     persistRoute("farm");
+    dismissTooltip(state);
     view = homeView(state, buyMode, view.bestMode);
     sheet = state.pendingChest ? "chest" : null;
+    persistState();
     rebuild();
+  },
+  onBuyChestUpgrade() {
+    if (!buyChestUpgrade(state)) return;
+    persistState();
+    rebuild();
+    playJuice("buy", state.muted);
+    showToast("Chest lasts longer. Rate ticked up.");
   },
   onSignIn(username) {
     signIn(username);

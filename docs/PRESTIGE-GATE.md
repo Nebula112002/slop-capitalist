@@ -1,9 +1,7 @@
 # Prestige spam / re-lock
 
-**Superseded.** The full P0 prestige gate (why spam works, this-run meter, scaling threshold, gain formula, UI disable + progress, save hydrate for old prestiged saves, tests) lives in:
+**Superseded as a work queue.** The P0 prestige gate shipped (this-run meter, scaling threshold, live disable). Historical write-up also lives in [`docs/MASTER-PLAN.md`](MASTER-PLAN.md) §8.
 
-**[`docs/MASTER-PLAN.md`](MASTER-PLAN.md)** — section **8. Prestige re-lock (P0)**
+Leftovers: [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md). **Monetization: do not touch / not this pass.**
 
-That file is the single source of truth. Planning only — do not ship game logic from this note.
-
-This stub exists so old links and the `cursor/prestige-gate-docs-babd` branch are not orphaned.
+Do not re-open the lifetime-views spam bug from this note.

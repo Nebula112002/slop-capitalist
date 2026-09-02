@@ -1,22 +1,26 @@
 # Slop Capitalist — master plan
 
-**Status:** back burner — do not implement from this file.  
+**Status:** shipped. This file is the **decision archive** (numbers, prestige re-lock, outside/inside, BEST math). Do not implement leftover chrome from here.
+
+**Leftovers**
+
+1. **Opus pass** — [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md)
+2. **Monetization** — do not touch / not this pass. No IAP, ads, Stripe, or a paid prestige shop.
+3. **Do not regress:** username sign-in, prestige → Hype, idle-chest ranks, selected-row buy + BEST as a mode chip.
+
 **Date:** 2026-09-02  
 **Repo:** `D:\AI\slop-capitalist` (own git). Do not fold into d-ai.  
 **Host:** lives on the PC → runs on the PC. Port `8896`. Never `:3000`. Never the warehouse.
 
-This is the **single source of truth** for every back-burner idea so far. Two earlier passes raced and left overlapping scraps (`docs/BACK-BURNER.md` on `cursor/back-burner-plan-be55`, `docs/PRESTIGE-GATE.md` on `cursor/prestige-gate-docs-babd`). Those files are now short pointers. Everything they decided lives here.
-
-A later agent should be able to implement phase-by-phase **without re-deciding numbers, triggers, layout, or navigation**.
+Two earlier passes raced and left overlapping scraps (`docs/BACK-BURNER.md`, `docs/PRESTIGE-GATE.md`). Those files are short pointers. What they decided still lives below, as history.
 
 ---
 
 ## 1. How to use this file
 
-- **Planning only.** No gameplay code, no CSS restyle, no servers, no Loopwright posts.
-- Defaults in this file are the build defaults if Caleb does not answer the open questions.
-- Phases are ordered on purpose. Do not skip P0 to ship flavor.
+- **Archive.** Phases P0–5 and the leftover extras loop already shipped in the live toy. Do not re-litigate numbers from chat.
 - Theme stays content-farm / algorithm idle. Do not reskin.
+- **Future work is not in this file.** Opus: [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md). Monetization: do not touch / not this pass.
 
 ---
 
@@ -140,15 +144,12 @@ There is **no outside view**. There is **no recommendation**. Comparing five ful
 
 ### Non-goals
 
-- **No implementation from this document.** No gameplay code, no CSS restyle, no toast table in `src/`.
-- **No IAP. No ads.** The README already says "No backend. No ads."
+- **No IAP. No ads this pass.** Monetization: do not touch. Do not write a plan into the repo.
 - **No theme change.** Do not reskin as lemonade, pizza, or a generic tycoon. Do not copy Hyper Hippo / ComputerLunch art, names, or cash-shop passes (`AGENTS.md`).
 - **No folding into d-ai.** Commit here only.
 - **No move off the PC.** Port `8896`. If it lives on the PC, it runs on the PC.
 - **No Loopwright posts** from this folder.
 - **No AAA menu tree.** No inventory, friends, collections, lore codex, achievement gallery, or cash-shop ladder.
-- **No events / battle pass / extra planets in the first build.** Only leave chrome slots so those can land later.
-- **No cash-upgrade shop yet.** Cycle speed in this plan is derived from milestones, not a separate spend sink.
 - **Do not refund** an already-spam-inflated `prestigeMult` on old saves. Just stop further free clicks.
 
 ---
@@ -859,9 +860,13 @@ The new idea. Depends on chrome existing so both views share a frame.
 - Coalesce buy-bulk vs milestone (one toast).
 - No save bump.
 
-### Phase 6 — later, not this plan's job
+### Phase 6 — later, not this file's job
 
-Events, passes, extra planets, Managers dock tab, optional System B combo, optional "Live" bar polish, optional cash-upgrade shop, optional both-planets outside map. They slot into the chrome from Phase 1 and the surfaces from §6.
+**Opus** owns the next visual / IA pass: [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md).
+
+**Monetization:** do not touch / not this pass.
+
+Events, passes, extra planets, and a later prestige-currency shop slot into existing sheets. Do not invent them from this archive.
 
 ---
 
@@ -925,43 +930,35 @@ This game stays on the PC at `8896`. Do not stand up a warehouse copy. Do not bi
 
 ---
 
-## 13. Open questions for Caleb
+## 13. Open questions / leftovers
 
-Only the calls a human has to make. Everything else is decided above. If these sit unanswered, implement the **defaults**.
+Answered in play, or moved:
 
-1. **Speed curve.** Default is **25% faster at every milestone, floor 0.25s**. Alternate is **halve at 25 / 100 / 400 / 1000 only**, same floor. Which one?
-2. **Home screen.** Default is **outside-first** once 2+ businesses are owned (first clip still lands inside). Alternate: always land inside the last-opened card, with Farm as an opt-in map. Confirm outside-first.
-3. **Advisor metric.** Default is **ROI (`ΔVPS / cost`) for the BEST badge**, with **time-to-next-rank** as the number on the row. Alternate: BEST = soonest rank you can afford. Confirm ROI-for-badge.
+- Speed curve shipped as **halve at 25 / 100 / 400 / 1000**, floor 0.25s (not the 25%-per-mark default below). Do not flip it from this file.
+- Outside-first once 2+ businesses are owned. Keep it.
+- BEST badge is ROI (`ΔVPS / cost`). Keep it honest.
 
-Not asked, because the defaults are solid:
+**Still open, and not for a drive-by:**
 
-- RANK allows **partial** buys toward the mark.
-- Tap is **System A (refresh nudge)**, not instant cream, and not A+B together.
-- One planet on the outside list at a time.
-- No refund of a spam-inflated multiplier on old saves.
-
-If something else is still on the back burner (cash-upgrade shop, sound, a third planet) and is not in §2, append it to the raw idea log here instead of leaving it in chat.
+- Visual / IA overhaul → [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md)
+- **Monetization: do not touch / not this pass.**
 
 ---
 
-## Implementer notes (do not do them now)
+## Implementer notes
 
-Touched files when someone actually builds this, in phase order:
+Touched files for the **Opus** pass are listed in `docs/OPUS-GUIDELINES.md`. Do not start from the phase table above unless you are debugging history.
 
-- **P0:** `src/game.ts` (`GameState`, `credit`, `canPrestige`, `prestige`, `loadGame`), `src/ui.ts` prestige chrome + `patchMeters`, `src/game.test.ts`.
-- **1:** `src/ui.ts` `renderApp`, `src/styles.css`.
-- **2:** `src/game.ts` (`BuyMode`, `resolveBuyCount`, BEST helpers), `src/ui.ts`, `src/styles.css`, `src/main.ts`, tests.
-- **3:** `src/game.ts` (`effectiveCycleSec`, `tick`, `viewsPerSec`), `src/ui.ts` meta / outside pips, tests.
-- **4:** `src/game.ts` (nudge helper), `src/ui.ts` hints / bar handler, `src/main.ts`, tests.
-- **5:** `src/data.ts` or new `src/flavor.ts`, `src/ui.ts` `showToast`, `src/main.ts` call sites.
-
-Do not start servers to write a markdown file. Do not publish. Do not edit d-ai maps for this.
+Do not publish. Do not edit d-ai maps for this.
 
 ---
 
 ## Pointers
 
-| Old scrap | Role now |
+| File | Role now |
 |---|---|
-| `docs/BACK-BURNER.md` | Pointer here. Used to hold ideas 1–6 + a short prestige summary. |
-| `docs/PRESTIGE-GATE.md` | Pointer here. Used to hold the full P0 prestige write-up (also copied into an older BACK-BURNER on `cursor/prestige-gate-docs-babd`). |
+| `docs/BACK-BURNER.md` | Leftover pointer: Opus + monetization-left-alone |
+| `docs/PRESTIGE-GATE.md` | Historical P0 prestige write-up (also §8 here). Shipped. |
+| `docs/UI-UX.md` | Pointer at Opus |
+| `docs/OPUS-GUIDELINES.md` | Next visual / IA pass |
+| `docs/PLAYTEST.md` | Honest playtest notes from 2026-09-02 |

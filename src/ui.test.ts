@@ -40,6 +40,9 @@ const noop: UiHandlers = {
   onHome() {},
   onContinue() {},
   onNewRun() {},
+  onSignIn() {},
+  onBuyShop() {},
+  onBuyChestUpgrade() {},
   onClaimDrop() {},
   onClaimEvent() {},
   onClaimPass() {},
@@ -136,7 +139,8 @@ describe("chrome + views", () => {
     expect(root.querySelector("[data-dock-buy]")?.textContent).not.toContain("Buy BEST");
     expect(root.textContent).not.toMatch(/Best:\s+\d+×/);
     expect(root.querySelector("#advisor")).toBeNull();
-    expect(root.querySelector("[data-enter]")?.textContent).toContain("Open");
+    expect(root.querySelector("[data-enter]")?.getAttribute("aria-label")).toContain("Open");
+    expect(root.querySelector("[data-enter]")?.textContent).toContain("›");
     expect(root.textContent).toContain("YouTube farm");
     expect(root.textContent).toContain("SIM");
   });
@@ -146,6 +150,7 @@ describe("chrome + views", () => {
     renderApp(root, newGame(), 1, farm, null, noop);
     expect(root.querySelectorAll("[data-buymode]").length).toBe(5);
     expect(root.querySelector("[data-best-mode]")?.textContent).toBe("BEST");
+    expect(root.textContent).toContain("Qty");
     expect(root.textContent).toContain("RANK");
     expect(root.textContent).toContain("100");
   });
@@ -285,5 +290,55 @@ describe("chrome + views", () => {
     expect(root.querySelector('[data-buymode="10"]')?.classList.contains("is-on")).toBe(true);
     expect(root.querySelector("[data-best-mode]")?.classList.contains("is-on")).toBe(false);
     expect(root.querySelector("[data-dock-buy]")?.textContent).toContain("Cursed Short");
+  });
+
+  it("puts hire-all on the farm when a manager is waiting", () => {
+    const root = document.createElement("div");
+    const state = newGame();
+    state.views = 10_000;
+    renderApp(root, state, 1, farm, null, noop);
+    const farmHire = root.querySelector(".farm-hire") as HTMLButtonElement;
+    expect(farmHire).toBeTruthy();
+    expect(farmHire.disabled).toBe(false);
+    expect(farmHire.textContent).toContain("Hire all");
+  });
+
+  it("explains RANK in one muted line", () => {
+    const root = document.createElement("div");
+    renderApp(root, newGame(), "rank", farm, null, noop);
+    expect(root.textContent).toContain("RANK buys up to the next x2");
+    renderApp(root, newGame(), "rank", { ...farm, bestMode: true }, null, noop);
+    expect(root.textContent).toContain("RANK BEST is the best step toward a rank");
+  });
+
+  it("marks The Simulation as a poster planet", () => {
+    const root = document.createElement("div");
+    const state = newGame();
+    state.viewsThisRun = PRESTIGE_AT;
+    prestige(state);
+    state.viewsThisRun = state.nextPrestigeAt;
+    prestige(state);
+    renderApp(root, state, 1, farm, null, noop);
+    expect(root.textContent).toContain("Poster planet");
+    expect(root.textContent).toContain("1T+");
+  });
+
+  it("skips the farm tip once the landing loop has been seen", () => {
+    const root = document.createElement("div");
+    const fresh = newGame();
+    renderApp(root, fresh, 1, farm, null, noop);
+    expect(root.querySelector("[data-tip]")).toBeTruthy();
+    fresh.seenTooltip = true;
+    renderApp(root, fresh, 1, farm, null, noop);
+    expect(root.querySelector("[data-tip]")).toBeNull();
+  });
+
+  it("offers idle-chest upgrades from settings", () => {
+    const root = document.createElement("div");
+    const state = newGame();
+    state.views = 1_000;
+    renderApp(root, state, 1, farm, "settings", noop);
+    expect(root.textContent).toContain("Idle chest");
+    expect(root.querySelector("[data-chest-up]")).toBeTruthy();
   });
 });

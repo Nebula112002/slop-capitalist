@@ -40,6 +40,7 @@ Stop: `.\scripts\stop.ps1`
 - Offline progress (managers only, 8h cap)
 - Local-clock **Trend Drop** + free **Infinity Intern** pass (no ads, no IAP)
 - Save: `localStorage` key `slop-capitalist.v1` (hydrate, no wipe)
+- Next visual pass: `docs/OPUS-GUIDELINES.md` (Opus). Monetization: not this pass.
 
 You start with one cursed short. Tap the bar. Buy more. Hire a gremlin. Walk away.
 

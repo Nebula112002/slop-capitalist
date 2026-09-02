@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { BUSINESSES, EVENT_PERIOD_MS, EVENTS, PRESTIGE_AT, SAVE_KEY } from "./data";
+import { BUSINESSES, EVENT_PERIOD_MS, EVENTS, PRESTIGE_AT, PRESTIGE_TIKTOK_AT, SAVE_KEY, SAVE_VERSION } from "./data";
 import {
   adviseFarm,
   algo,
   applyOffline,
   buy,
   buyBest,
+  buyChestUpgrade,
   buyScore,
   buyCost,
   canAlgo,
@@ -317,13 +318,13 @@ describe("offline + prestige", () => {
     expect(state.planet).toBe("tiktok");
     expect(state.views).toBe(0);
     expect(state.viewsThisRun).toBe(0);
-    expect(state.nextPrestigeAt).toBe(PRESTIGE_AT * 10);
+    expect(state.nextPrestigeAt).toBe(PRESTIGE_TIKTOK_AT);
     expect(state.businesses.tiktok[0].owned).toBe(1);
-    expect(state.prestigeMult).toBeGreaterThan(1);
+    expect(state.hype).toBeGreaterThan(0);
     expect(canPrestige(state)).toBe(false);
-    const stacked = state.prestigeMult;
+    const stacked = state.hype;
     expect(prestige(state)).toBe(0);
-    expect(state.prestigeMult).toBe(stacked);
+    expect(state.hype).toBe(stacked);
   });
 
   it("pays this-run gain, not the lifetime snapshot", () => {
@@ -344,9 +345,10 @@ describe("offline + prestige", () => {
     expect(canPrestige(state)).toBe(false);
     state.viewsThisRun = state.nextPrestigeAt;
     expect(canPrestige(state)).toBe(true);
-    const before = state.prestigeMult;
+    const before = state.hype;
     expect(prestige(state)).toBeGreaterThan(0);
-    expect(state.prestigeMult).toBeGreaterThan(before);
+    expect(state.hype).toBeGreaterThan(before);
+    expect(state.prestigeCount).toBe(2);
     expect(canPrestige(state)).toBe(false);
   });
 
@@ -354,7 +356,7 @@ describe("offline + prestige", () => {
     const fresh = loadGame("nope");
     expect(fresh.planet).toBe("youtube");
     expect(fresh.businesses.youtube[0].owned).toBe(1);
-    expect(fresh.v).toBe(3);
+    expect(fresh.v).toBe(SAVE_VERSION);
     expect(fresh.viewsThisRun).toBe(0);
     expect(fresh.nextPrestigeAt).toBe(PRESTIGE_AT);
   });
@@ -372,7 +374,7 @@ describe("offline + prestige", () => {
         lastTs: 1,
       }),
     );
-    expect(loaded.v).toBe(3);
+    expect(loaded.v).toBe(SAVE_VERSION);
     expect(loaded.viewsThisRun).toBe(400_000);
     expect(loaded.nextPrestigeAt).toBe(PRESTIGE_AT);
     expect(canPrestige(loaded)).toBe(false);
@@ -391,7 +393,7 @@ describe("offline + prestige", () => {
       }),
     );
     expect(loaded.viewsThisRun).toBe(0);
-    expect(loaded.nextPrestigeAt).toBe(PRESTIGE_AT);
+    expect(loaded.nextPrestigeAt).toBe(PRESTIGE_TIKTOK_AT);
     expect(loaded.prestigeMult).toBe(3.25);
     expect(canPrestige(loaded)).toBe(false);
     expect(prestige(loaded)).toBe(0);
@@ -412,7 +414,7 @@ describe("offline + prestige", () => {
       }),
     );
     expect(loaded.viewsThisRun).toBe(250_000);
-    expect(loaded.nextPrestigeAt).toBe(10_000_000);
+    expect(loaded.nextPrestigeAt).toBe(PRESTIGE_TIKTOK_AT);
     expect(canPrestige(loaded)).toBe(false);
   });
 
@@ -451,8 +453,10 @@ describe("offline + prestige", () => {
       startCycle(state, 0);
       tick(state, 1.1);
     }
-    expect(buy(state, 0, 1)).toBe(1);
-    expect(state.businesses.simulation[0].owned).toBe(2);
+    expect(state.views).toBeGreaterThan(0);
+    const quote = quotedBuy(state, 0, 1);
+    expect(quote.cost).toBeGreaterThanOrEqual(1e12);
+    expect(buy(state, 0, 1)).toBe(0);
   });
 
   it("hydrates a twice-prestiged v2 save onto The Simulation", () => {
@@ -469,7 +473,7 @@ describe("offline + prestige", () => {
         lastTs: 1,
       }),
     );
-    expect(loaded.v).toBe(3);
+    expect(loaded.v).toBe(SAVE_VERSION);
     expect(loaded.simulationUnlocked).toBe(true);
     expect(loaded.businesses.simulation[0].owned).toBe(1);
     expect(loaded.event.clout).toBe(0);
@@ -531,7 +535,7 @@ describe("event + pass", () => {
     expect(claimPass(state, "intern")).toBeNull();
 
     const loaded = loadGame(saveGame(state));
-    expect(loaded.v).toBe(3);
+    expect(loaded.v).toBe(SAVE_VERSION);
     expect(loaded.event.claimedDropId).toBe(EVENTS[0].id);
     expect(loaded.event.claimed).toContain("sticker");
     expect(loaded.event.clout).toBeCloseTo(35, 8);
@@ -639,7 +643,8 @@ describe("hire all + extras", () => {
     state.businesses.youtube[0].running = true;
     state.lastTs = 1_000;
     const { earned, offlineMs } = applyOffline(state, 1_000 + 120_000);
-    const chest = offerComebackChest(state, earned, offlineMs);
+    expect(earned).toBeGreaterThan(0);
+    const chest = offerComebackChest(state, offlineMs);
     expect(chest).toBeGreaterThan(0);
     expect(state.pendingChest?.views).toBe(chest);
     const claimed = claimChest(state);
@@ -680,6 +685,19 @@ describe("hire all + extras", () => {
     prestige(state);
     expect(canPrestige(state)).toBe(false);
     expect(prestige(state)).toBe(0);
+  });
+
+  it("lets views buy a longer idle chest without touching the Hype shop", () => {
+    const state = newGame(1_000);
+    state.businesses.youtube[0].manager = true;
+    state.businesses.youtube[0].running = true;
+    state.views = 200;
+    expect(buyChestUpgrade(state)).toBe(true);
+    expect(state.chestRank).toBe(1);
+    expect(state.views).toBe(0);
+    state.lastTs = 1_000;
+    const { offlineMs } = applyOffline(state, 1_000 + 120_000);
+    expect(offerComebackChest(state, offlineMs)).toBeGreaterThan(0);
   });
 });
 

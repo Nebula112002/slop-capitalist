@@ -74,7 +74,7 @@ say(`optional nudge still works; views ${beforeTap.toFixed(0)} -> ${state.views.
 
 state.lastTs = 1_000;
 const away = applyOffline(state, 1_000 + 5 * 60 * 1000);
-const chest = offerComebackChest(state, away.earned, away.offlineMs);
+const chest = offerComebackChest(state, away.offlineMs);
 const claimed = claimChest(state);
 say(`comeback: away ${away.offlineMs}ms earned ${away.earned.toFixed(0)} chest ${chest.toFixed(0)} claimed ${claimed.toFixed(0)}`);
 

@@ -2,6 +2,7 @@ import {
   BUSINESSES,
   EVENT_SHOP,
   HYPE_SHOP,
+  IDLE_CHEST_MAX_RANK,
   PASS_TIERS,
   PLANETS,
   UI_ROUTE_KEY,
@@ -13,6 +14,7 @@ import {
   adviseFarm,
   algoGain,
   canAlgo,
+  canBuyChestUpgrade,
   canBuyShop,
   canPrestige,
   currentEvent,
@@ -27,6 +29,7 @@ import {
   parseBuyMode,
   planetUnlocked,
   prestigeGain,
+  previewIdleChest,
   quotedBuy,
   recap,
   rowVps,
@@ -40,6 +43,7 @@ import {
   type FarmAdvice,
   type GameState,
 } from "./game";
+import { chestUpgradeCost } from "./idle-chest";
 import { uiKeyFor } from "./users";
 
 export type MoreSheet = "managers" | "event" | "pass";
@@ -97,6 +101,7 @@ export type UiHandlers = {
   onClaimEvent: (id: string) => void;
   onClaimPass: (id: string) => void;
   onClaimChest: () => void;
+  onBuyChestUpgrade: () => void;
   onMute: () => void;
   onExport: () => void;
   onImportAsk: () => void;
@@ -225,13 +230,28 @@ function renderPlanetChips(state: GameState): string {
 function renderBuyChips(buyMode: BuyMode, bestMode: boolean): string {
   const qty = BUY_CHIPS.map(
     (mode) => `
-      <button class="chip ${!bestMode && buyMode === mode ? "is-on" : ""}" data-buymode="${mode}">
+      <button class="chip ${!bestMode && buyMode === mode ? "is-on" : ""}" data-buymode="${mode}" title="${mode === "rank" ? "Buy up to the next rank" : `Buy ${chipLabel(mode)}`}">
         ${chipLabel(mode)}
       </button>
     `,
   ).join("");
-  return `${qty}
-      <button class="chip ${bestMode ? "is-on" : ""}" data-best-mode>BEST</button>`;
+  return `<span class="dock-label">Qty</span>${qty}
+      <button class="chip ${bestMode ? "is-on" : ""}" data-best-mode title="Advisor spends on the BEST row">BEST</button>`;
+}
+
+function dockHint(buyMode: BuyMode, bestMode: boolean): string {
+  if (buyMode !== "rank") return "";
+  return bestMode
+    ? `<p class="dock-hint">RANK BEST is the best step toward a rank, not the selected row.</p>`
+    : `<p class="dock-hint">RANK buys up to the next x2. Partial is fine. BEST still picks the farm.</p>`;
+}
+
+function farmHireAll(state: GameState): string {
+  const slots = managerSlots(state);
+  const open = slots.some((slot) => slot.owned > 0 && !slot.hired);
+  if (!open) return "";
+  const hot = slots.some((slot) => slot.affordable);
+  return `<button class="ghost-lite farm-hire" data-hire-all ${hot ? "" : "disabled"}>Hire all</button>`;
 }
 
 function dropHot(state: GameState, now: number): boolean {
@@ -289,8 +309,16 @@ function renderOutside(state: GameState, buyMode: BuyMode, selected: number): st
   return `
     <div class="farm-head">
       <strong>${planetName} farm</strong>
-      <nav class="planets" aria-label="Planets">${renderPlanetChips(state)}</nav>
+      <div class="farm-tools">
+        ${farmHireAll(state)}
+        <nav class="planets" aria-label="Planets">${renderPlanetChips(state)}</nav>
+      </div>
     </div>
+    ${
+      state.planet === "simulation"
+        ? `<p class="farm-note">Poster planet. The starter pays; next copies are 1T+ views. Scenery until a later retune.</p>`
+        : ""
+    }
     <div class="rows" id="biz-list">
       ${defs
         .map((def, index) => {
@@ -323,7 +351,7 @@ function renderOutside(state: GameState, buyMode: BuyMode, selected: number): st
                 <span class="owned">x${formatNum(row.owned)}</span>
                 <span class="badge ${badge ? `is-${badge}` : "is-off"}" data-row-badge>${badge ? badge.toUpperCase() : ""}</span>
               </div>
-              <button class="row-open" data-enter="${index}" aria-label="Open ${def.name}">Open</button>
+              <button class="row-open ${selected === index ? "is-on" : ""}" data-enter="${index}" aria-label="Open ${def.name}" title="Open">›</button>
             </article>
           `;
         })
@@ -501,6 +529,23 @@ function renderPass(state: GameState): string {
   `;
 }
 
+function renderChestUpgrade(state: GameState): string {
+  const preview = previewIdleChest(state, 0);
+  const rank = preview.rank;
+  const maxed = rank >= IDLE_CHEST_MAX_RANK;
+  const cost = chestUpgradeCost(rank);
+  const can = canBuyChestUpgrade(state);
+  return `
+    <div class="chest-up">
+      <strong>Idle chest ${rank}/${IDLE_CHEST_MAX_RANK}</strong>
+      <p>Fills up to ${formatTime(preview.durationMs)} at ${Math.round(preview.rate * 100)}% of manager VPS. Away 60s+ to claim.</p>
+      <button class="mgr" data-chest-up ${maxed || !can ? "disabled" : ""}>
+        ${maxed ? "Max duration" : `Longer chest · ${formatNum(cost)}`}
+      </button>
+    </div>
+  `;
+}
+
 function renderHypeShop(state: GameState): string {
   return `
     <div class="hype-shop">
@@ -582,6 +627,7 @@ function renderSheet(state: GameState, sheet: UiSheet, now: number): string {
         <div class="sheet-card">
           <strong>Comeback chest</strong>
           <p>Away ${chest ? formatTime(chest.offlineMs) : "a bit"}. Bonus ${chest ? formatNum(chest.views) : "0"} views. Local only.</p>
+          ${renderChestUpgrade(state)}
           <div class="sheet-actions">
             <button class="ghost-lite" data-sheet-close>Later</button>
             <button class="ghost" data-claim-chest>Open chest</button>
@@ -634,6 +680,7 @@ function renderSheet(state: GameState, sheet: UiSheet, now: number): string {
         <div class="sheet-card">
           <strong>Slop Capitalist</strong>
           <p>One cursed short. Then the whole internet. Local only. Lives on this PC. No IAP.</p>
+          ${renderChestUpgrade(state)}
           <div class="sheet-stack">
             <button class="ghost-lite" data-mute>${state.muted ? "Unmute juice" : "Mute juice"}</button>
             <button class="ghost-lite" data-recap>Stats / recap</button>
@@ -770,28 +817,32 @@ export function renderApp(
           <button class="overflow" data-overflow aria-label="Settings">…</button>
         </div>
         <div class="wallet wallet-thin">
-          <div class="wallet-views">
-            <span class="label">Views</span>
-            <strong id="views">${formatNum(state.views)}</strong>
+          <div class="wallet-money">
+            <div class="wallet-views">
+              <span class="label">Views</span>
+              <strong id="views">${formatNum(state.views)}</strong>
+            </div>
+            <em id="vps">${formatNum(globalViewsPerSec(state, clock))}/s</em>
           </div>
-          <em id="vps">${formatNum(globalViewsPerSec(state, clock))}/s</em>
-          <span class="stat-chip" id="mult">Viral ${totalMult(state).toFixed(2)}x</span>
-          ${
-            state.hype > 0 || state.prestigeCount > 0
-              ? `<span class="stat-chip" id="hype">Hype ${formatNum(state.hype)}</span>`
-              : ""
-          }
-          ${
-            showAlgo
-              ? algoReady
-                ? `<button class="stat-chip is-ready" data-algo id="algo">Algo ${state.algoMult.toFixed(2)}x</button>`
-                : `<span class="stat-chip" id="algo">Algo ${state.algoMult.toFixed(2)}x</span>`
-              : ""
-          }
-          <button class="stat-chip prestige-chip ${goal.ready ? "is-ready" : ""} ${shopHot(state) ? "is-hot" : ""}" data-prestige>
-            <span>Prestige</span>
-            <i class="mini-bar" aria-hidden="true"><b id="goal-bar" style="width:${goal.pct}%"></b></i>
-          </button>
+          <div class="wallet-chips">
+            <span class="stat-chip" id="mult">Viral ${totalMult(state).toFixed(2)}x</span>
+            ${
+              state.hype > 0 || state.prestigeCount > 0
+                ? `<span class="stat-chip" id="hype">Hype ${formatNum(state.hype)}</span>`
+                : ""
+            }
+            ${
+              showAlgo
+                ? algoReady
+                  ? `<button class="stat-chip is-ready" data-algo id="algo">Algo ${state.algoMult.toFixed(2)}x</button>`
+                  : `<span class="stat-chip" id="algo">Algo ${state.algoMult.toFixed(2)}x</span>`
+                : ""
+            }
+            <button class="stat-chip prestige-chip ${goal.ready ? "is-ready" : ""} ${shopHot(state) ? "is-hot" : ""}" data-prestige>
+              <span>Prestige</span>
+              <i class="mini-bar" aria-hidden="true"><b id="goal-bar" style="width:${goal.pct}%"></b></i>
+            </button>
+          </div>
         </div>
       </header>
       <main class="camera">${camera}${
@@ -808,6 +859,7 @@ export function renderApp(
         <div class="dock-modes">
           ${renderBuyChips(buyMode, view.bestMode)}
         </div>
+        ${dockHint(buyMode, view.bestMode)}
         <nav class="dock-icons" aria-label="More">
           <button class="dock-icon ${mgrsHot(state) ? "is-hot" : ""}" data-sheet-open="managers">Mgrs</button>
           <button class="dock-icon ${dropHot(state, clock) ? "is-hot" : ""}" data-sheet-open="event">Drop</button>
@@ -862,7 +914,10 @@ function bindChrome(root: HTMLElement, view: UiView, handlers: UiHandlers): void
   root.querySelector("[data-buy-best]")?.addEventListener("click", handlers.onBuyBest);
   root.querySelector("[data-dock-buy]")?.addEventListener("click", () => handlers.onBuy(view.selected));
   root.querySelector("[data-dock-mgr]")?.addEventListener("click", () => handlers.onManager(view.selected));
-  root.querySelector("[data-hire-all]")?.addEventListener("click", handlers.onHireAll);
+  root.querySelectorAll("[data-hire-all]").forEach((el) => {
+    el.addEventListener("click", handlers.onHireAll);
+  });
+  root.querySelector("[data-chest-up]")?.addEventListener("click", handlers.onBuyChestUpgrade);
   root.querySelector("[data-claim-chest]")?.addEventListener("click", handlers.onClaimChest);
   root.querySelector("[data-mute]")?.addEventListener("click", handlers.onMute);
   root.querySelector("[data-export]")?.addEventListener("click", handlers.onExport);
@@ -922,6 +977,8 @@ function patchOutsideRows(root: HTMLElement, state: GameState, buyMode: BuyMode,
     const el = root.querySelector<HTMLElement>(`[data-row="${index}"]`);
     if (!el) return;
     el.classList.toggle("is-on", selected === index);
+    const open = el.querySelector<HTMLElement>("[data-enter]");
+    if (open) open.classList.toggle("is-on", selected === index);
     const vps = rowVps(state, index);
     const cycle = cycleSecFor(def.cycleSec, row.owned, state.shop?.tempo ?? 0);
     const next = nextMilestone(row.owned);
@@ -1035,11 +1092,14 @@ export function patchMeters(
   now = 0,
 ): void {
   const clock = now > 0 ? now : Date.now();
-  const cont = root.querySelector<HTMLButtonElement>("[data-continue]");
-  if (cont && hasSaveProgress(state)) {
-    cont.textContent = `Continue · ${formatNum(state.views)} views`;
+  if (view.screen === "landing") {
+    const cont = root.querySelector<HTMLButtonElement>("[data-continue]");
+    const name = root.querySelector<HTMLInputElement>("[data-username]")?.value.trim();
+    if (cont && hasSaveProgress(state) && name) {
+      cont.textContent = `Continue · ${name} · ${formatNum(state.views)} views`;
+    }
+    return;
   }
-  if (view.screen === "landing") return;
 
   const views = root.querySelector("#views");
   const vps = root.querySelector("#vps");
@@ -1054,6 +1114,9 @@ export function patchMeters(
   patchGoal(root, state);
 
   if (root.querySelector("[data-hire]")) patchManagers(root, state);
+  root.querySelectorAll<HTMLButtonElement>("[data-hire-all]").forEach((btn) => {
+    btn.disabled = !managerSlots(state).some((slot) => slot.affordable);
+  });
   if (root.querySelector("[data-claim-drop]")) patchEvent(root, state, clock);
   if (root.querySelector("[data-claim-pass]")) patchPass(root, state);
   if (view.screen === "outside") patchOutsideRows(root, state, buyMode, view.selected);

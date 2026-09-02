@@ -14,8 +14,12 @@ try {
   notes.push(`first paint: ${land.includes("Continue") && land.includes("New run") ? "landing" : "NOT landing"}`);
   notes.push(`landing bullets: buy=${land.includes("Tap a farm")} farm=${land.includes("farm is the game")} prestige=${land.includes("Prestige when the chip fills")}`);
   notes.push(`dumped into farm: ${land.includes("YouTube farm")}`);
+  notes.push(`username field: ${land.includes("Username")}`);
   await page.screenshot({ path: "docs/playtest-landing.png", fullPage: true });
 
+  await page.locator("[data-username]").fill("Caleb");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForSelector("[data-continue]:not([disabled])");
   await page.getByRole("button", { name: /^Continue/ }).click();
   await page.waitForSelector("[data-dock-buy], [data-buy-best], [data-dismiss-tip]");
   const farm = await page.locator("body").innerText();
@@ -26,6 +30,9 @@ try {
   notes.push(`header BEST repeat: ${/Best:\s+\d/.test(farm)}`);
   notes.push(`Algo on fresh farm: ${/\bAlgo\b/.test(farm) && farm.includes("Algo 1.00")}`);
   notes.push(`qty chips visible: ${farm.includes("RANK") && farm.includes("MAX") ? "yes" : "hidden"}`);
+  notes.push(`qty label: ${farm.includes("Qty")}`);
+  notes.push(`farm hire-all: ${farm.includes("Hire all")}`);
+  notes.push(`farm tip after landing: ${farm.includes("Got it")}`);
   notes.push(`SIM chip: ${farm.includes("SIM")}`);
 
   if (farm.includes("Got it")) {
