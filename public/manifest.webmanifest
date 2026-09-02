@@ -1,0 +1,22 @@
+{
+  "id": "slop-capitalist",
+  "name": "Slop Capitalist",
+  "short_name": "Slop",
+  "description": "Idle tycoon about farming the algorithm. You do not make content. You make throughput.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#08070c",
+  "theme_color": "#08070c",
+  "categories": ["games", "entertainment"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
