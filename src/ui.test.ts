@@ -162,12 +162,25 @@ describe("farm chrome", () => {
     expect(root.querySelector("[data-overflow]")?.getAttribute("aria-label")).toBe("Menu");
   });
 
+  it("attributes the live drop income so an idle farm does not look like auto-play", () => {
+    const root = document.createElement("div");
+    const state = newGame();
+    renderApp(root, state, 1, farm, null, noop, 1);
+    const chip = root.querySelector("#drop") as HTMLButtonElement;
+    expect(chip).toBeTruthy();
+    expect(chip.textContent).toMatch(/Drop \u00d7[\d.]+ \u00b7 \+[\d.]+/);
+    expect(chip.dataset.sheetOpen).toBe("event");
+    // Every row is idle, so the wallet rate must be explained by the drop.
+    expect(root.querySelector("[data-row='0'] [data-row-vps]")?.textContent).toBe("idle");
+    expect(root.querySelector("#vps")?.textContent).not.toBe("0/s");
+  });
+
   it("keeps the rare jobs out of the dock and inside one menu", () => {
     const root = document.createElement("div");
     const state = newGame();
     renderApp(root, state, 1, farm, null, noop);
+    expect(root.querySelectorAll(".dock [data-sheet-open]").length).toBe(0);
     expect(root.querySelector('[data-sheet-open="managers"]')).toBeNull();
-    expect(root.querySelector('[data-sheet-open="event"]')).toBeNull();
     expect(root.querySelector('[data-sheet-open="pass"]')).toBeNull();
 
     renderApp(root, state, 1, farm, "menu", noop);
@@ -332,21 +345,58 @@ describe("farm chrome", () => {
 });
 
 describe("farm rows", () => {
-  it("gives the list listbox semantics and a roving tab stop", () => {
+  it("splits every row into native run / pick / open buttons", () => {
     const root = document.createElement("div");
     const state = newGame();
     renderApp(root, state, 1, { ...farm, selected: 1 }, null, noop);
-    expect(root.querySelector(".rows")?.getAttribute("role")).toBe("listbox");
     const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-row]"));
     expect(rows.length).toBe(BUSINESSES.youtube.length);
-    expect(rows.map((row) => row.getAttribute("aria-selected"))).toEqual([
+    expect(rows.map((row) => row.querySelector("[data-select]")?.getAttribute("aria-pressed"))).toEqual([
       "false",
       "true",
       "false",
       "false",
       "false",
     ]);
-    expect(rows.map((row) => row.tabIndex)).toEqual([-1, 0, -1, -1, -1]);
+    rows.forEach((row) => {
+      expect(row.querySelector("[data-row-run]")?.tagName).toBe("BUTTON");
+      expect(row.querySelector("[data-select]")?.tagName).toBe("BUTTON");
+      // Nesting a control inside a control is what the old listbox row did.
+      expect(row.querySelector("[data-select] button")).toBeNull();
+    });
+  });
+
+  it("labels the run button by what a tap would actually do", () => {
+    const root = document.createElement("div");
+    const state = newGame();
+    renderApp(root, state, 1, farm, null, noop);
+    const owned = root.querySelector("[data-row='0'] [data-row-run]") as HTMLButtonElement;
+    expect(owned.disabled).toBe(false);
+    expect(owned.classList.contains("is-ready")).toBe(true);
+    expect(owned.getAttribute("aria-label")).toBe("Upload Cursed Short");
+
+    const unowned = root.querySelector("[data-row='1'] [data-row-run]") as HTMLButtonElement;
+    expect(unowned.disabled).toBe(true);
+    expect(unowned.classList.contains("is-empty")).toBe(true);
+
+    state.businesses.youtube[0].running = true;
+    patchMeters(root, state, 1, farm);
+    expect(owned.classList.contains("is-live")).toBe(true);
+    expect(owned.getAttribute("aria-label")).toBe("Cursed Short is uploading");
+
+    state.views = 10_000;
+    expect(hireManager(state, 0)).toBe(true);
+    patchMeters(root, state, 1, farm);
+    expect(owned.classList.contains("is-auto")).toBe(true);
+    expect(owned.getAttribute("aria-label")).toBe("Nudge Cursed Short");
+  });
+
+  it("teaches the tap loop on a fresh farm", () => {
+    const root = document.createElement("div");
+    renderApp(root, newGame(), 1, farm, null, noop);
+    const tip = root.querySelector("[data-tip]") as HTMLElement;
+    expect(tip.textContent).toContain("Tap an icon to post");
+    expect(tip.textContent).toContain("until you hire a manager");
   });
 
   it("only puts Open on the selected row so the rest cannot be fat-fingered", () => {
@@ -367,7 +417,7 @@ describe("farm rows", () => {
     const state = newGame();
     renderApp(root, state, 1, farm, null, noop);
     const live = root.querySelector("[data-row='0']") as HTMLElement;
-    expect(live.classList.contains("is-live")).toBe(true);
+    expect(live.classList.contains("is-owned")).toBe(true);
     expect(live.querySelector("[data-row-fill]")).toBeTruthy();
     expect(live.querySelector("[data-row-rank]")?.textContent).toContain("\u00d72 at 25");
     const cold = root.querySelector("[data-row='1']") as HTMLElement;

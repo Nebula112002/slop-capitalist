@@ -42,6 +42,7 @@ import {
   hasSaveProgress,
   patchMeters,
   persistUiRoute,
+  pulseRun,
   readUiRoute,
   renderApp,
   showAway,
@@ -207,12 +208,11 @@ const handlers: UiHandlers = {
     if (result === "none") return;
     persistState();
     playJuice("tap", state.muted);
-    if (result === "nudge") {
-      patchMeters(root, state, buyMode, view, Date.now());
-      flashNudge(root);
-      return;
-    }
-    rebuild();
+    // Patch, never rebuild: a tap is the fastest thing in the game and a full
+    // re-render would drop the button out from under the next one.
+    patchMeters(root, state, buyMode, view, Date.now());
+    if (result === "nudge") flashNudge(root);
+    pulseRun(root, index);
   },
   onManager(index, planet) {
     const target = planet ?? state.planet;

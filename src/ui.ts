@@ -322,6 +322,20 @@ function menuHot(state: GameState, now: number): boolean {
   );
 }
 
+function dropText(state: GameState, now: number): string {
+  const live = currentEvent(now);
+  return `Drop \u00d7${live.def.bonusMult} \u00b7 +${formatNum(extraEventVps(totalMult(state), live.def))}/s`;
+}
+
+/**
+ * The live drop multiplies every farm and adds income of its own, so a farm
+ * with nothing running still earns. Without this the wallet looks like the game
+ * is playing itself.
+ */
+function dropChip(state: GameState, now: number): string {
+  return `<button class="hud-chip" data-sheet-open="event" id="drop" title="Live drop. Tap for the details.">${dropText(state, now)}</button>`;
+}
+
 function renderDockActions(state: GameState, buyMode: BuyMode, selected: number, bestMode: boolean): string {
   if (bestMode) {
     const advice = adviseFarm(state, buyMode);
@@ -371,6 +385,22 @@ function badgeTitle(badge: string): string {
   return "Slowest climb to its next rank";
 }
 
+/** Idle / running / on autopilot. Drives the icon button's look and label. */
+function runState(state: GameState, index: number): "auto" | "live" | "ready" | "empty" {
+  const row = state.businesses[state.planet][index];
+  if (!row || row.owned <= 0) return "empty";
+  if (row.manager) return "auto";
+  return row.running ? "live" : "ready";
+}
+
+function runLabel(state: GameState, index: number, name: string): string {
+  const mode = runState(state, index);
+  if (mode === "auto") return `Nudge ${name}`;
+  if (mode === "live") return `${name} is uploading`;
+  if (mode === "ready") return `Upload ${name}`;
+  return `${name} not owned yet`;
+}
+
 function renderRows(state: GameState, buyMode: BuyMode, selected: number): string {
   const defs = BUSINESSES[state.planet];
   const rows = state.businesses[state.planet];
@@ -386,49 +416,53 @@ function renderRows(state: GameState, buyMode: BuyMode, selected: number): strin
       const on = selected === index;
       const fill = owns ? Math.min(100, row.progress * 100) : 0;
       const run = barRun(cycle) && vps > 0;
-      const live = owns
+      const mode = runState(state, index);
+      const body = owns
         ? `
-          <div class="frow-live">
+          <span class="frow-live">
             <i class="frow-cycle ${run ? "is-running" : ""}" data-row-bar aria-hidden="true"><b data-row-fill style="width:${run ? 100 : fill}%"></b></i>
             <span class="frow-vps" data-row-vps>${vps > 0 ? `${formatNum(vps)}/s` : "idle"}</span>
-          </div>
-          <div class="frow-foot">
+          </span>
+          <span class="frow-foot">
             <span data-row-rank>${rankCopy(state, index, row.owned)}</span>
             <span class="frow-cyclelabel" data-row-cycle>${cycleCopy(cycle)}</span>
-          </div>`
+          </span>`
         : `
-          <p class="frow-pitch">${def.blurb}</p>
-          <div class="frow-foot">
+          <span class="frow-pitch">${def.blurb}</span>
+          <span class="frow-foot">
             <span>${locked ? "Needs the row above" : `Costs ${formatNum(def.baseCost)} views`}</span>
             <span class="frow-cyclelabel">${formatCycle(def.cycleSec)}</span>
-          </div>`;
+          </span>`;
       return `
-        <div
-          class="frow ${on ? "is-on" : ""} ${owns ? "is-live" : "is-cold"} ${locked ? "is-locked" : ""}"
-          id="frow-${index}"
-          role="option"
-          aria-selected="${on ? "true" : "false"}"
-          tabindex="${on ? "0" : "-1"}"
-          data-row="${index}"
-          data-select="${index}"
-        >
-          <span class="frow-icon" aria-hidden="true">${def.icon}</span>
-          <span class="frow-name">${def.name}</span>
-          <span class="frow-tags">
-            <span class="badge ${badge ? `is-${badge}` : "is-off"}" data-row-badge ${badge ? `title="${badgeTitle(badge)}"` : ""}>${badge ? badge.toUpperCase() : ""}</span>
-            ${owns ? `<span class="frow-owned" data-row-owned>\u00d7${formatNum(row.owned)}</span>` : ""}
-          </span>
-          ${live}
+        <div class="frow ${on ? "is-on" : ""} ${owns ? "is-owned" : "is-cold"} ${locked ? "is-locked" : ""}" data-row="${index}">
+          <button
+            class="frow-run is-${mode}"
+            data-run="${index}"
+            data-row-run
+            ${owns ? "" : "disabled"}
+            aria-label="${runLabel(state, index, def.name)}"
+          >
+            <span class="frow-icon" aria-hidden="true">${def.icon}</span>
+            <span class="frow-auto" aria-hidden="true"></span>
+          </button>
+          <button class="frow-pick" data-select="${index}" aria-pressed="${on ? "true" : "false"}">
+            <span class="frow-name">${def.name}</span>
+            <span class="frow-tags">
+              <span class="badge ${badge ? `is-${badge}` : "is-off"}" data-row-badge ${badge ? `title="${badgeTitle(badge)}"` : ""}>${badge ? badge.toUpperCase() : ""}</span>
+              ${owns ? `<span class="frow-owned" data-row-owned>\u00d7${formatNum(row.owned)}</span>` : ""}
+            </span>
+            ${body}
+          </button>
           ${
             on
-              ? `<button class="frow-open" data-enter="${index}" tabindex="-1" aria-label="Open ${def.name}" title="Open ${def.name}">\u203a</button>`
+              ? `<button class="frow-open" data-enter="${index}" aria-label="Open ${def.name}" title="Open ${def.name}">\u203a</button>`
               : ""
           }
         </div>
       `;
     })
     .join("");
-  return `<div class="rows" id="biz-list" role="listbox" aria-label="Farms">${cards}</div>`;
+  return `<div class="rows" id="biz-list">${cards}</div>`;
 }
 
 function renderOutside(state: GameState, buyMode: BuyMode, selected: number): string {
@@ -453,6 +487,17 @@ function renderOutside(state: GameState, buyMode: BuyMode, selected: number): st
       state.planet === "simulation"
         ? `<p class="farm-note">Poster planet. The starter pays. The next copy is 1T+ views, so this is scenery for now.</p>`
         : ""
+    }
+    ${
+      state.seenTooltip
+        ? ""
+        : `<aside class="tip" data-tip>
+            <span class="tip-copy">
+              <strong>Tap an icon to post. Tap a row to aim.</strong>
+              <span>One clip per tap until you hire a manager.</span>
+            </span>
+            <button class="pill" data-dismiss-tip>Got it</button>
+          </aside>`
     }
     ${renderRows(state, buyMode, selected)}
   `;
@@ -984,6 +1029,7 @@ function renderLanding(state: GameState, session: UiSession): string {
     <div class="frame frame-pitch">
       <main class="pitch">
         <header class="pitch-head">
+          <img class="pitch-mark" src="/favicon.svg" width="52" height="52" alt="" />
           <p class="wordmark wordmark-xl"><span class="ink-mint">Slop</span> Capitalist</p>
           <p class="pitch-tag">An idle tycoon about farming the algorithm. You do not make content. You make throughput.</p>
         </header>
@@ -1102,6 +1148,7 @@ export function renderApp(
           </button>
           <div class="hud-meta">
             <span id="mult">Viral ${totalMult(state).toFixed(2)}\u00d7</span>
+            ${dropChip(state, clock)}
             ${
               state.hype > 0 || state.prestigeCount > 0
                 ? `<span id="hype">Hype ${formatNum(state.hype)}</span>`
@@ -1110,22 +1157,14 @@ export function renderApp(
             ${
               showAlgo
                 ? algoReady
-                  ? `<button class="hud-algo is-ready" data-algo id="algo">Algo ${state.algoMult.toFixed(2)}\u00d7 \u00b7 ready</button>`
+                  ? `<button class="hud-chip is-ready" data-algo id="algo">Algo ${state.algoMult.toFixed(2)}\u00d7 \u00b7 ready</button>`
                   : `<span id="algo">Algo ${state.algoMult.toFixed(2)}\u00d7</span>`
                 : ""
             }
           </div>
         </div>
       </header>
-      <main class="camera" ${sheet ? "inert" : ""}>${renderCamera(state, buyMode, view)}${
-        state.seenTooltip
-          ? ""
-          : `<aside class="tip" data-tip>
-              <strong>Tap a row to aim. The mint button buys it.</strong>
-              <p>\u00d710 / \u00d7100 / MAX / RANK change how many. BEST hands the pick to the advisor.</p>
-              <button class="pill" data-dismiss-tip>Got it</button>
-            </aside>`
-      }</main>
+      <main class="camera" ${sheet ? "inert" : ""}>${renderCamera(state, buyMode, view)}</main>
       <footer class="dock">
         <div id="toast-slot" class="toast-slot" role="status" aria-live="polite"></div>
         ${renderChips(state, buyMode, view.bestMode)}
@@ -1140,7 +1179,7 @@ export function renderApp(
   bindChrome(root, view, handlers);
   manageSheetFocus(root, sheet, handlers);
   if (keyboardRows && view.screen === "outside" && !sheet) {
-    root.querySelector<HTMLElement>(`[data-row="${view.selected}"]`)?.focus();
+    root.querySelector<HTMLElement>(`[data-row="${view.selected}"] [data-select]`)?.focus();
   }
 }
 
@@ -1188,42 +1227,36 @@ function manageSheetFocus(root: HTMLElement, sheet: UiSheet, handlers: UiHandler
   }
 }
 
-function bindRowKeys(root: HTMLElement, view: UiView, handlers: UiHandlers): void {
-  const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-row]"));
-  if (rows.length === 0) return;
-  rows.forEach((row) => {
-    row.addEventListener("keydown", (event) => {
-      const index = Number(row.dataset.row);
-      const key = event.key;
-      if (key === "ArrowDown" || key === "ArrowRight") {
-        event.preventDefault();
-        keyboardRows = true;
-        handlers.onSelect(Math.min(rows.length - 1, index + 1));
-        return;
-      }
-      if (key === "ArrowUp" || key === "ArrowLeft") {
-        event.preventDefault();
-        keyboardRows = true;
-        handlers.onSelect(Math.max(0, index - 1));
-        return;
-      }
-      if (key === "Home") {
-        event.preventDefault();
-        keyboardRows = true;
-        handlers.onSelect(0);
-        return;
-      }
-      if (key === "End") {
-        event.preventDefault();
-        keyboardRows = true;
-        handlers.onSelect(rows.length - 1);
-        return;
-      }
-      if (key === "Enter" || key === " ") {
-        event.preventDefault();
-        keyboardRows = true;
-        if (view.selected === index) handlers.onEnter(index);
-        else handlers.onSelect(index);
+/** Arrows walk the list. Enter is the button's own click, so it needs no handler. */
+function bindRowKeys(root: HTMLElement, handlers: UiHandlers): void {
+  const picks = Array.from(root.querySelectorAll<HTMLElement>("[data-select]"));
+  if (picks.length === 0) return;
+  const move = (index: number) => {
+    keyboardRows = true;
+    handlers.onSelect(Math.min(picks.length - 1, Math.max(0, index)));
+  };
+  picks.forEach((pick) => {
+    pick.addEventListener("keydown", (event) => {
+      const index = Number(pick.dataset.select);
+      switch (event.key) {
+        case "ArrowDown":
+          event.preventDefault();
+          move(index + 1);
+          break;
+        case "ArrowUp":
+          event.preventDefault();
+          move(index - 1);
+          break;
+        case "Home":
+          event.preventDefault();
+          move(0);
+          break;
+        case "End":
+          event.preventDefault();
+          move(picks.length - 1);
+          break;
+        default:
+          break;
       }
     });
   });
@@ -1294,16 +1327,14 @@ function bindChrome(root: HTMLElement, view: UiView, handlers: UiHandlers): void
     });
   });
 
-  root.querySelectorAll<HTMLElement>("[data-select]").forEach((row) => {
-    row.addEventListener("click", (event) => {
-      if ((event.target as HTMLElement).closest("[data-enter]")) return;
+  root.querySelectorAll<HTMLElement>("[data-select]").forEach((pick) => {
+    pick.addEventListener("click", () => {
       keyboardRows = false;
-      handlers.onSelect(Number(row.dataset.select));
+      handlers.onSelect(Number(pick.dataset.select));
     });
   });
   root.querySelectorAll<HTMLButtonElement>("[data-enter]").forEach((btn) => {
-    btn.addEventListener("click", (event) => {
-      event.stopPropagation();
+    btn.addEventListener("click", () => {
       keyboardRows = false;
       handlers.onEnter(Number(btn.dataset.enter));
     });
@@ -1311,7 +1342,7 @@ function bindChrome(root: HTMLElement, view: UiView, handlers: UiHandlers): void
   root.querySelectorAll<HTMLButtonElement>("[data-run]").forEach((btn) => {
     btn.addEventListener("click", () => handlers.onRun(Number(btn.dataset.run)));
   });
-  bindRowKeys(root, view, handlers);
+  bindRowKeys(root, handlers);
 }
 
 function patchGoal(root: HTMLElement, state: GameState): void {
@@ -1344,8 +1375,17 @@ function patchOutsideRows(
     if (!el) return;
     const on = selected === index;
     el.classList.toggle("is-on", on);
-    el.setAttribute("aria-selected", on ? "true" : "false");
-    el.tabIndex = on ? 0 : -1;
+    el.querySelector("[data-select]")?.setAttribute("aria-pressed", on ? "true" : "false");
+    const runBtn = el.querySelector<HTMLButtonElement>("[data-row-run]");
+    if (runBtn) {
+      const mode = runState(state, index);
+      runBtn.classList.toggle("is-ready", mode === "ready");
+      runBtn.classList.toggle("is-live", mode === "live");
+      runBtn.classList.toggle("is-auto", mode === "auto");
+      runBtn.classList.toggle("is-empty", mode === "empty");
+      runBtn.disabled = mode === "empty";
+      runBtn.setAttribute("aria-label", runLabel(state, index, def.name));
+    }
     const cycleSec = cycleSecFor(def.cycleSec, row.owned, state.shop?.tempo ?? 0);
     const vps = rowVps(state, index);
     const run = barRun(cycleSec) && vps > 0;
@@ -1488,6 +1528,8 @@ export function patchMeters(
   if (mult) mult.textContent = `Viral ${totalMult(state).toFixed(2)}\u00d7`;
   const hype = root.querySelector("#hype");
   if (hype) hype.textContent = `Hype ${formatNum(state.hype)}`;
+  const drop = root.querySelector("#drop");
+  if (drop) drop.textContent = dropText(state, clock);
   if (algo) {
     algo.textContent = `Algo ${state.algoMult.toFixed(2)}\u00d7${
       algo.classList.contains("is-ready") ? " \u00b7 ready" : ""
@@ -1540,6 +1582,17 @@ export function flashNudge(root: HTMLElement): void {
     bar.classList.remove("is-flash");
     if (pip) pip.hidden = true;
   }, 220);
+}
+
+/** Upload juice: the tapped icon dips so a manual cycle feels like a press. */
+export function pulseRun(root: HTMLElement, index: number): void {
+  const btn = root.querySelector<HTMLElement>(`[data-row="${index}"] [data-row-run]`);
+  const target = btn ?? root.querySelector<HTMLElement>("[data-inside-bar]");
+  if (!target) return;
+  target.classList.remove("is-tap");
+  void target.offsetWidth;
+  target.classList.add("is-tap");
+  window.setTimeout(() => target.classList.remove("is-tap"), 200);
 }
 
 /** Buy juice: the row thumps, the counter pops, a gain chip floats off the row. */
