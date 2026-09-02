@@ -1,9 +1,86 @@
-# Playtest — emptied burner redo
+# Playtest log
 
-**Date:** 2026-09-02  
 **Port:** `8896` (preview after `.\scripts\start.ps1`)
 
 Leftovers: [`docs/OPUS.md`](OPUS.md). **Monetization: do not touch / not this pass.**
+
+---
+
+# Pass 2 — Opus UI/UX overhaul
+
+**Date:** 2026-09-02 · `npm test` (101) + `npm run build` green · `node scripts/playtest-browser.mjs`
+
+## What changed
+
+**Landing is a product page.** Wordmark, one-line pitch, an animated mock of the farm (HUD, three
+rows with live bars, a mint buy bar), three labelled points (AIM / STAY / RESET), then a real
+`Player name` field and one primary. A brand-new name goes **straight to the farm** — there is no
+save to reassure anyone about. A name with progress still stops on the pitch so
+`Continue · {name} · {views}` can prove nothing was wiped. `New run` is a quiet text button and
+still confirms. Nobody signed in means no dead disabled Continue at all.
+
+**One HUD replaced the chrome pile.** Wordmark row (home + menu) over a single card: big gold
+Views, `/s` on the right, a thin `Viral / Hype / Algo` meta line, and a **prestige meter pill**
+whose sub-label is the bar the run has to clear (`1B`) instead of a rounded percent. Ready state is
+a gold border, gold text, `Ready`, and a slow glow — visible in a glance at 390px. Algo is still
+absent until it can fire.
+
+**Farm rows became the game.** Rows now carry a **live cycle bar**, `/s`, `×2 at 200 · 82 to go ·
+~1m 36s`, and the cycle. Rows you do not own show the business blurb plus what it costs, so the
+empty half of the list sells the next unlock instead of repeating "locked". The list stretches to
+fill whatever the chrome leaves. Measured on a 390×844 phone: **122px of top chrome, 128px of dock,
+five rows at 101px, all five fully visible, list owns 60% of the screen** (was ~3 squeezed rows).
+
+**Under 0.4s a cycle bar is a strobe, not information.** Those rows switch to a steady running
+shimmer and label the floor as `0.25s min`. The economy is untouched — only the read changes.
+
+**Open only exists on the selected row.** One 36px column on the row you already picked, so there
+is nothing to fat-finger on the other four. Enter on an already-selected row does the same thing.
+
+**Dock is two lines.** `×1 ×10 ×100 MAX RANK` in a scrollable rail plus a filled `BEST` toggle,
+one muted teaching line, then the primary. The old `Qty` label is gone; the line explains the chips
+instead (`MAX spends it all. RANK stops at the next ×2.`). `Mgrs / Drop / Pass` left the dock
+entirely — the third always-on stack is dead.
+
+**Quantity and BEST are now orthogonal.** Tapping a quantity chip used to silently cancel BEST,
+which made the documented `RANK BEST` combination unreachable by tapping RANK first. The chip now
+stays lit in BEST mode because BEST really does buy that many.
+
+**One menu holds every rare job.** Managers, Drop, Pass, Stats, Settings, and a waiting chest, each
+with a one-line summary and a gold flag when something is ready (`1 READY`, `FREE`, `CLAIM`). The
+menu button carries a gold dot when anything inside is live.
+
+**Chest is hard to miss.** A gold strip above the farm list whenever one is pending, plus the menu
+row. It only exists when there is a chest.
+
+**Inside is a real drill-in.** Hire moved off the dock and onto the card. The upload slab takes the
+leftover height, with a stats trio (per second / cycle / next rank) under it.
+
+**Juice.** Buys punch the button, thump the row, pop the Views counter, and float a `+N` off the
+row. Milestones get a three-note arpeggio. All layered oscillators, still muted by the same toggle.
+
+**A11y.** Sheets are `role="dialog" aria-modal`, take focus on open, trap Tab, close on Escape or a
+backdrop tap, and mark the chrome behind them `inert`. Rows are a `listbox` of `option`s with a
+roving tab stop and arrow / Home / End / Enter keys. Chips and planets report `aria-pressed`. The
+wordmark says what it does. Everything animated collapses under `prefers-reduced-motion`.
+
+## Honest leftovers
+
+1. **BEST math is unchanged and still picks Cursed Short early.** The dock now explains *why*
+   ("most views per second per view spent") without naming a second winner. It is still not
+   the exciting answer.
+2. **The Simulation is still a poster.** Copy is one dry line on the farm. 1e12 costs stay.
+3. **Drop and Pass are still chrome.** Second open is titles. They are out of prime space now,
+   which is the honest treatment, not a fix.
+4. **Empty-fold at minute zero.** One owned row plus four blurbs fills the screen, but it is
+   blurbs, not gameplay. That is an economy shape, not a layout bug.
+5. **Playwright on a live tab never sees the chest.** Verified with a seeded save instead.
+
+---
+
+# Pass 1 — emptied burner redo
+
+**Date:** 2026-09-02
 
 The suck list below is historical (pre-landing cleanup). Do not re-implement chrome from it.
 

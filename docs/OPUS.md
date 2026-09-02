@@ -2,6 +2,10 @@
 
 This is the **only** Opus brief. There is no competing guidelines file.
 
+> **Status:** the overhaul pass shipped. What it did, what it measured, and what it left honestly
+> undone is in [`docs/PLAYTEST.md`](PLAYTEST.md) under *Pass 2*. The brief below stays as written —
+> read it as the spec, not as an open queue.
+
 ---
 
 ## Prompt to give Opus

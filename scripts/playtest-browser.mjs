@@ -9,100 +9,205 @@ await page.evaluate(() => {
 await page.reload({ waitUntil: "networkidle" });
 
 const notes = [];
+/** innerText applies text-transform, so compare case-insensitively. */
+const has = (text, needle) => text.toLowerCase().includes(needle.toLowerCase());
+const closeSheet = async () => {
+  await page.locator("[data-sheet-close]").last().click();
+  await page.waitForSelector("[data-sheet]", { state: "detached" });
+};
+
 try {
   const land = await page.locator("body").innerText();
-  notes.push(`first paint: ${land.includes("Continue") && land.includes("New run") ? "landing" : "NOT landing"}`);
-  notes.push(`landing bullets: buy=${land.includes("Tap a farm")} farm=${land.includes("farm is the game")} prestige=${land.includes("Prestige when the chip fills")}`);
-  notes.push(`dumped into farm: ${land.includes("YouTube farm")}`);
-  notes.push(`username field: ${land.includes("Username")}`);
+  notes.push(`first paint: ${has(land, "Start posting") ? "landing pitch" : "NOT landing"}`);
+  notes.push(
+    `pitch points: aim=${has(land, "Tap a farm")} farm=${has(land, "farm is the game")} prestige=${has(land, "Prestige when the chip fills")}`,
+  );
+  notes.push(`dumped into farm: ${has(land, "YouTube farm")}`);
+  notes.push(`dead Continue on a fresh browser: ${(await page.locator("[data-continue]").count()) > 0}`);
+  notes.push(`player field: ${has(land, "Player name")}`);
   await page.screenshot({ path: "docs/playtest-landing.png", fullPage: true });
 
+  // A brand-new name has no save to reassure anyone about, so it goes straight in.
   await page.locator("[data-username]").fill("Caleb");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForSelector("[data-continue]:not([disabled])");
-  await page.getByRole("button", { name: /^Continue/ }).click();
-  await page.waitForSelector("[data-dock-buy], [data-buy-best], [data-dismiss-tip]");
+  await page.getByRole("button", { name: "Start posting" }).click();
+  await page.waitForSelector("[data-dock-buy]");
   const farm = await page.locator("body").innerText();
-  notes.push(`after Continue: ${farm.includes("YouTube farm") ? "YouTube farm" : "NOT farm"}`);
-  notes.push(`default mint is selected row: ${farm.includes("Cursed Short") && !farm.includes("Buy BEST")}`);
-  notes.push(`BEST chip present: ${farm.includes("BEST")}`);
-  notes.push(`prestige card on farm: ${farm.includes("Unlock The Simulation")}`);
+  notes.push(`after Start posting: ${has(farm, "YouTube farm") ? "straight to the farm" : "NOT farm"}`);
+  notes.push(`default mint is the selected row: ${has(farm, "Cursed Short") && !has(farm, "Buy BEST")}`);
+  notes.push(`prestige card eating the fold: ${has(farm, "Unlock TikTok")}`);
   notes.push(`header BEST repeat: ${/Best:\s+\d/.test(farm)}`);
-  notes.push(`Algo on fresh farm: ${/\bAlgo\b/.test(farm) && farm.includes("Algo 1.00")}`);
-  notes.push(`qty chips visible: ${farm.includes("RANK") && farm.includes("MAX") ? "yes" : "hidden"}`);
-  notes.push(`qty label: ${/qty/i.test(farm)}`);
-  notes.push(`farm hire-all: ${farm.includes("Hire all")}`);
-  notes.push(`farm tip after landing: ${farm.includes("Got it")}`);
-  notes.push(`SIM chip: ${farm.includes("SIM")}`);
+  notes.push(`Algo on a fresh farm: ${has(farm, "Algo 1.00")}`);
+  notes.push(`chip teaching line: ${(await page.locator("[data-dock-hint]").innerText()).trim()}`);
+  notes.push(`rare jobs in the dock: ${/\bMgrs\b/.test(farm) || /\bDrop\b/.test(farm)}`);
+  notes.push(
+    `farm hire-all: ${await page.evaluate(() => {
+      const btn = document.querySelector(".pill-hire");
+      if (!btn) return "not rendered";
+      return btn.hidden ? "held back until a manager is affordable" : "offered";
+    })}`,
+  );
+  notes.push(`first-run tip: ${has(farm, "Got it")}`);
 
-  if (farm.includes("Got it")) {
+  if (has(farm, "Got it")) {
     await page.getByRole("button", { name: "Got it" }).click();
-    notes.push("dismissed first-run tip");
+    notes.push("dismissed the first-run tip");
   }
   await page.screenshot({ path: "docs/playtest-home.png", fullPage: true });
 
-  const rows = await page.locator("[data-row]").count();
-  notes.push(`farm rows visible: ${rows}`);
+  // How much of a 390x844 phone is actually farm?
+  const fold = await page.evaluate(() => {
+    const box = (sel) => {
+      const el = document.querySelector(sel);
+      return el ? el.getBoundingClientRect() : null;
+    };
+    const hud = box(".hud");
+    const dock = box(".dock");
+    const rows = Array.from(document.querySelectorAll("[data-row]"));
+    const inFold = rows.filter((row) => {
+      const r = row.getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= window.innerHeight;
+    }).length;
+    const rowH = rows.length ? Math.round(rows[0].getBoundingClientRect().height) : 0;
+    const listH = rows.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0);
+    return {
+      viewport: window.innerHeight,
+      hud: Math.round(hud?.height ?? 0),
+      dock: Math.round(dock?.height ?? 0),
+      rowH,
+      rows: rows.length,
+      inFold,
+      listShare: Math.round((listH / window.innerHeight) * 100),
+    };
+  });
+  notes.push(
+    `fold: ${fold.viewport}px tall, chrome ${fold.hud}px top + ${fold.dock}px dock, ${fold.rows} rows at ${fold.rowH}px, ${fold.inFold} fully visible, list owns ${fold.listShare}% of the screen`,
+  );
 
   const rowBuy = page.locator("[data-dock-buy]");
-  if (await rowBuy.count()) {
-    const label = await rowBuy.innerText();
-    notes.push(`dock: ${label.replace(/\s+/g, " ").trim()}`);
-    if (!(await rowBuy.isDisabled())) {
-      await rowBuy.click();
-      notes.push("clicked selected-row buy");
-    } else {
-      notes.push("selected buy disabled at fresh start (waiting for first views)");
-      await page.waitForTimeout(1500);
-      const later = await rowBuy.innerText();
-      notes.push(`after 1.5s: ${later.replace(/\s+/g, " ").trim()} disabled=${await rowBuy.isDisabled()}`);
-      if (!(await rowBuy.isDisabled())) {
-        await rowBuy.click();
-        notes.push("clicked selected-row buy after wait");
-      }
-    }
+  notes.push(`dock: ${(await rowBuy.innerText()).replace(/\s+/g, " ").trim()}`);
+  if (await rowBuy.isDisabled()) {
+    await page.waitForTimeout(1500);
+    notes.push(`after 1.5s: ${(await rowBuy.innerText()).replace(/\s+/g, " ").trim()}`);
   }
+  if (!(await rowBuy.isDisabled())) {
+    await rowBuy.click();
+    notes.push("bought the selected row");
+  }
+
+  // Selecting a second row must move the mint button with it.
+  await page.locator("[data-row='1']").click();
+  notes.push(`select row 2 -> dock: ${(await rowBuy.innerText()).replace(/\s+/g, " ").trim()}`);
+  notes.push(`open button count (selected-only): ${await page.locator("[data-enter]").count()}`);
+
+  // Keyboard: the list is a real listbox.
+  await page.locator("[data-row='1']").focus();
+  await page.keyboard.press("ArrowDown");
+  const kb = await page.locator("[data-row='2']").getAttribute("aria-selected");
+  notes.push(`ArrowDown selects the next farm: ${kb === "true"}`);
+
+  await page.locator("[data-row='0']").click();
   await page.locator("[data-best-mode]").click();
   const best = page.locator("[data-buy-best]");
-  if (await best.count()) {
-    notes.push(`BEST mode dock: ${(await best.innerText()).replace(/\s+/g, " ").trim()}`);
-  }
+  notes.push(`BEST mode dock: ${(await best.innerText()).replace(/\s+/g, " ").trim()}`);
+  notes.push(`BEST why-line: ${(await page.locator("[data-dock-hint]").innerText()).trim()}`);
+  await page.locator("[data-best-mode]").click();
 
-  const stillFarm = await page.locator("[data-row]").count();
-  await page.getByRole("button", { name: "Mgrs" }).click();
-  const mgrText = await page.locator("body").innerText();
-  const farmUnderMgrs = await page.locator("[data-row]").count();
-  notes.push(`Mgrs sheet: ${mgrText.includes("Hire all affordable") ? "hire-all present" : "MISSING hire-all"}`);
-  notes.push(`farm still mounted under Mgrs: ${farmUnderMgrs >= stillFarm}`);
-  await page.getByRole("button", { name: "← Farm" }).click();
+  await page.locator('[data-buymode="rank"]').click();
+  notes.push(`RANK dock: ${(await rowBuy.innerText()).replace(/\s+/g, " ").trim()}`);
+  notes.push(`RANK hint: ${(await page.locator("[data-dock-hint]").innerText()).trim()}`);
+  await page.locator('[data-buymode="1"]').click();
 
-  await page.getByRole("button", { name: "Drop" }).click();
-  const dropText = await page.locator("body").innerText();
-  notes.push(`Drop sheet: ${dropText.includes("Claim drop") ? "claim present" : "no claim"}`);
-  await page.getByRole("button", { name: "← Farm" }).first().click();
+  // Inside is a drill-in from the selected row only, and back is one tap.
+  await page.locator("[data-enter]").click();
+  await page.waitForSelector("[data-card-mgr]");
+  const insideText = await page.locator("body").innerText();
+  notes.push(`inside card: hire on the card=${has(insideText, "Hire a thumbnail gremlin")}`);
+  notes.push(`inside keeps the buy dock: ${(await page.locator("[data-dock-buy]").count()) > 0}`);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector("[data-row]");
+  notes.push("Escape returned to the farm");
 
-  await page.getByRole("button", { name: "Pass" }).click();
-  const passText = await page.locator("body").innerText();
-  notes.push(`Pass sheet: ${passText.includes("Infinity Intern") ? "pass track" : "MISSING"}`);
-  await page.getByRole("button", { name: "← Farm" }).first().click();
-
-  await page.getByRole("button", { name: "Prestige" }).click();
-  const prestige = await page.locator("body").innerText();
-  notes.push(`prestige sheet: ${prestige.includes("0 / 1M") || prestige.includes("/ 1M") ? "progress" : "MISSING progress"}`);
-  await page.getByRole("button", { name: "Cancel" }).click();
-
-  await page.getByRole("button", { name: "Home" }).click();
-  const home = await page.locator("body").innerText();
-  notes.push(`wordmark home: ${home.includes("Continue") ? "landing" : "NOT landing"}`);
-  notes.push(`save wiped on home: ${home.includes("Continue ·") ? "kept views" : "fresh or no views yet"}`);
-
-  await page.getByRole("button", { name: /^Continue/ }).click();
-  await page.waitForSelector("[data-dock-buy], [data-buy-best]");
-  notes.push(`continue again: ${(await page.locator("[data-row]").count()) > 0 ? "farm" : "MISSING farm"}`);
+  // One menu holds every rare job.
+  const rowsBefore = await page.locator("[data-row]").count();
+  await page.locator("[data-overflow]").click();
+  await page.waitForSelector("[data-sheet-card]");
+  const menu = await page.locator("[data-sheet-card]").innerText();
+  notes.push(
+    `menu: managers=${has(menu, "Managers")} drop=${has(menu, "Drop")} pass=${has(menu, "Pass")} stats=${has(menu, "Stats")} settings=${has(menu, "Settings")}`,
+  );
+  notes.push(`farm still mounted under the menu: ${(await page.locator("[data-row]").count()) >= rowsBefore}`);
+  notes.push(`sheet takes focus: ${await page.evaluate(() => Boolean(document.activeElement?.closest("[data-sheet-card]")))}`);
+  for (let i = 0; i < 9; i++) await page.keyboard.press("Tab");
+  notes.push(
+    `focus trapped after 9 tabs: ${await page.evaluate(() => Boolean(document.activeElement?.closest("[data-sheet-card]")))}`,
+  );
+  notes.push(`chrome behind the sheet inert: ${await page.evaluate(() => document.querySelector(".camera")?.hasAttribute("inert"))}`);
+  await page.locator(".sheet-back").click({ position: { x: 20, y: 20 } });
+  await page.waitForSelector("[data-sheet]", { state: "detached" });
+  notes.push("backdrop tap closed the sheet");
 
   await page.locator("[data-overflow]").click();
-  const settings = await page.locator("body").innerText();
-  notes.push(`settings: mute=${settings.includes("Mute")} export=${settings.includes("Copy export")} recap=${settings.includes("recap")}`);
+  await page.locator('[data-sheet-open="managers"]').click();
+  await page.waitForSelector("[data-hire-all]");
+  notes.push(
+    `managers sheet: ${has(await page.locator("[data-sheet-card]").innerText(), "Hire all affordable") ? "hire-all present" : "MISSING hire-all"}`,
+  );
+  await closeSheet();
+
+  await page.locator("[data-overflow]").click();
+  await page.locator('[data-sheet-open="event"]').click();
+  await page.waitForSelector("[data-claim-drop]");
+  notes.push(`drop sheet: ${(await page.locator("[data-claim-drop]").innerText()).trim()}`);
+  await page.locator("[data-claim-drop]").click();
+  notes.push(`after claim: ${(await page.locator("[data-claim-drop]").innerText()).trim()}`);
+  await closeSheet();
+
+  await page.locator("[data-overflow]").click();
+  await page.locator('[data-sheet-open="pass"]').click();
+  await page.waitForSelector("[data-claim-pass]");
+  notes.push(
+    `pass sheet: ${has(await page.locator("[data-sheet-card]").innerText(), "Infinity Intern") ? "pass track" : "MISSING"}`,
+  );
+  await closeSheet();
+
+  await page.locator("[data-overflow]").click();
+  await page.locator('[data-sheet-open="settings"]').click();
+  await page.waitForSelector("[data-mute]");
+  const settings = await page.locator("[data-sheet-card]").innerText();
+  notes.push(
+    `settings: chest=${has(settings, "Idle chest")} mute=${has(settings, "Mute")} export=${has(settings, "Copy export")}`,
+  );
+  await closeSheet();
+
+  // Prestige is a meter, not a page-wide button.
+  await page.locator("[data-prestige]").click();
+  await page.waitForSelector("[data-prestige-go]");
+  const prestige = await page.locator("[data-sheet-card]").innerText();
+  notes.push(`prestige sheet: ${/\/ 1M/.test(prestige) ? "progress + Hype shop" : "MISSING progress"}`);
+  notes.push(`prestige gated: ${await page.locator("[data-prestige-go]").isDisabled()}`);
+  await closeSheet();
+
+  // Home must not wipe anything.
+  await page.getByRole("button", { name: /Slop Capitalist/ }).click();
+  await page.waitForSelector("[data-continue]");
+  const home = await page.locator("body").innerText();
+  notes.push(`wordmark home: ${has(home, "Continue") ? "landing" : "NOT landing"}`);
+  notes.push(`save survived home: ${/Continue \u00b7 Caleb/.test(home) ? "named + kept" : "LOST"}`);
+
+  await page.getByRole("button", { name: /^Continue/ }).click();
+  await page.waitForSelector("[data-dock-buy]");
+  notes.push(`continue again: ${(await page.locator("[data-row]").count()) > 0 ? "farm" : "MISSING farm"}`);
+
+  // A second player must not inherit the first save.
+  await page.getByRole("button", { name: /Slop Capitalist/ }).click();
+  await page.locator("[data-username]").fill("Alice");
+  await page.getByRole("button", { name: "Switch or create a player" }).click();
+  await page.waitForSelector("[data-dock-buy]");
+  const alice = await page.evaluate(() => document.querySelector("#views")?.textContent);
+  notes.push(`fresh player starts clean: views=${alice}`);
+  await page.getByRole("button", { name: /Slop Capitalist/ }).click();
+  await page.waitForSelector("[data-user-pick]");
+  notes.push(`other saves listed: ${await page.locator("[data-user-pick]").count()}`);
 } catch (err) {
   notes.push(`ERROR: ${err.message}`);
   await page.screenshot({ path: "docs/playtest-fail.png", fullPage: true }).catch(() => {});
