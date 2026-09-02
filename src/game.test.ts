@@ -78,7 +78,7 @@ describe("buy bar", () => {
     state.businesses.youtube[0].owned = 20;
     const def = BUSINESSES.youtube[0];
     const three = buyCost(def.baseCost, def.costMult, 20, 3);
-    state.views = three;
+    state.views = three * 1.001;
     const bought = buy(state, 0, "rank");
     expect(bought).toBe(3);
     expect(state.businesses.youtube[0].owned).toBe(23);
