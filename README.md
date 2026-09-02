@@ -34,12 +34,12 @@ Stop: `.\scripts\stop.ps1`
 ## Toy v0
 
 - Currency: **Views**
-- Planet 1: YouTube (5 businesses)
-- Managers (autopilot)
-- x2 milestones at 25 / 50 / 100 / …
+- Planets: YouTube → TikTok (1st prestige) → **The Simulation** (2nd prestige)
+- Managers (autopilot), plus a **Mgrs** dock tab
+- Income x2 at 25 / 50 / 100 / … · cycle time **halves at 25 / 100 / 400 / 1000** (floor 0.25s)
 - Offline progress (managers only, 8h cap)
-- Prestige at 1M lifetime views → unlock **TikTok**, keep a multiplier
-- Save: `localStorage` key `slop-capitalist.v1`
+- Local-clock **Trend Drop** + free **Infinity Intern** pass (no ads, no IAP)
+- Save: `localStorage` key `slop-capitalist.v1` (hydrate, no wipe)
 
 You start with one cursed short. Tap the bar. Buy more. Hire a gremlin. Walk away.
 

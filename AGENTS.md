@@ -6,5 +6,5 @@ Own repo at `D:\AI\slop-capitalist`. Not d-ai source.
 - **Start:** `scripts\start.ps1` · **Stop:** `scripts\stop.ps1`
 - **Save:** browser `localStorage` (`slop-capitalist.v1`)
 - Theme is original (content-farm idle). Do not copy Hyper Hippo / ComputerLunch art, names, or passes.
-- Keep the loop small: views, businesses, managers, milestones, one prestige.
+- Keep the loop small: views, businesses, managers, milestones, prestige planets.
 - No Loopwright posts from this folder. No silent publish.

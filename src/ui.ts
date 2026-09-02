@@ -1,48 +1,88 @@
-import { BUSINESSES, PLANETS, type PlanetId } from "./data";
+import {
+  BUSINESSES,
+  EVENT_SHOP,
+  PASS_TIERS,
+  PLANETS,
+  type PlanetId,
+} from "./data";
 import { formatCycle, formatNum, formatTime } from "./format";
 import { pickFlavor } from "./flavor";
 import {
   adviseFarm,
   canPrestige,
+  currentEvent,
   cycleIncome,
   effectiveCycleSec,
+  extraEventVps,
   globalViewsPerSec,
   nextMilestone,
+  nextPlanetName,
   parseBuyMode,
+  planetUnlocked,
   prestigeGain,
   quotedBuy,
+  recap,
   rowVps,
   timeToRankSec,
+  totalMult,
+  unlockedPlanets,
+  algoGain,
+  canAlgo,
+  managerSlots,
   type BuyMode,
   type BuyQuote,
   type FarmAdvice,
   type GameState,
 } from "./game";
 
+export type DockTab = "buy" | "managers" | "event" | "pass";
+
 export type UiView = {
   screen: "outside" | "inside";
   selected: number;
+  tab: DockTab;
 };
 
-export type UiSheet = "prestige" | "settings" | null;
+export type UiSheet = "prestige" | "algo" | "settings" | "chest" | "recap" | "import" | null;
 
 export type UiHandlers = {
+  onBuyBest: () => void;
   onBuy: (index: number) => void;
   onRun: (index: number) => void;
-  onManager: (index: number) => void;
+  onManager: (index: number, planet?: PlanetId) => void;
+  onHireAll: () => void;
   onPlanet: (planet: PlanetId) => void;
   onPrestigeAsk: () => void;
   onPrestigeConfirm: () => void;
+  onAlgoAsk: () => void;
+  onAlgoConfirm: () => void;
   onSheetClose: () => void;
   onBuyMode: (mode: BuyMode) => void;
   onSelect: (index: number) => void;
   onEnter: (index: number) => void;
   onFarm: () => void;
+  onTab: (tab: DockTab) => void;
+  onClaimDrop: () => void;
+  onClaimEvent: (id: string) => void;
+  onClaimPass: (id: string) => void;
+  onClaimChest: () => void;
+  onMute: () => void;
+  onExport: () => void;
+  onImportAsk: () => void;
+  onImport: (raw: string) => void;
+  onRecap: () => void;
+  onDismissTip: () => void;
   onOverflow: () => void;
   onReset: () => void;
 };
 
 const BUY_CHIPS: BuyMode[] = [1, 10, 100, "max", "rank"];
+const DOCK_TABS: { id: DockTab; label: string }[] = [
+  { id: "buy", label: "Buy" },
+  { id: "managers", label: "Mgrs" },
+  { id: "event", label: "Drop" },
+  { id: "pass", label: "Pass" },
+];
 
 function chipLabel(mode: BuyMode): string {
   if (mode === "max") return "MAX";
@@ -50,12 +90,20 @@ function chipLabel(mode: BuyMode): string {
   return String(mode);
 }
 
+function planetShort(id: PlanetId): string {
+  if (id === "youtube") return "YT";
+  if (id === "tiktok") return "TT";
+  return "SIM";
+}
+
 function goalCopy(state: GameState): { title: string; detail: string; ready: boolean; pct: number } {
   const ready = canPrestige(state);
   const pct = Math.min(100, (state.viewsThisRun / state.nextPrestigeAt) * 100);
-  const title = state.tiktokUnlocked ? "Go even more viral" : "Unlock TikTok";
+  const title = state.simulationUnlocked
+    ? "Go even more viral"
+    : `Unlock ${nextPlanetName(state)}`;
   const detail = ready
-    ? `Reset both planets. Keep a +${prestigeGain(state.viewsThisRun).toFixed(2)}x multiplier.`
+    ? `Reset every farm. Keep a +${prestigeGain(state.viewsThisRun).toFixed(2)}x multiplier.`
     : `${formatNum(state.viewsThisRun)} / ${formatNum(state.nextPrestigeAt)}`;
   return { title, detail, ready, pct };
 }
@@ -71,6 +119,13 @@ export function buyButtonText(quote: BuyQuote, mode: BuyMode, name?: string): st
     return `Rank ${quote.gap}${who} · ${cost}`;
   }
   return `Buy ${quote.count}${who} · ${cost}`;
+}
+
+export function bestButtonText(state: GameState, mode: BuyMode, advice: FarmAdvice): string {
+  if (advice.bestIndex === null) return "Nothing to buy";
+  const def = BUSINESSES[state.planet][advice.bestIndex];
+  const quote = quotedBuy(state, advice.bestIndex, mode);
+  return `Buy BEST · ${quote.count}× ${def.name} · ${formatNum(quote.cost)}`;
 }
 
 function advisorLine(state: GameState, mode: BuyMode, advice: FarmAdvice): string {
@@ -91,16 +146,15 @@ function advisorLine(state: GameState, mode: BuyMode, advice: FarmAdvice): strin
 
 function renderPlanetChips(state: GameState): string {
   return PLANETS.map((planet) => {
-    const locked = planet.id === "tiktok" && !state.tiktokUnlocked;
+    const locked = !planetUnlocked(state, planet.id);
     const active = state.planet === planet.id;
-    const short = planet.id === "youtube" ? "YT" : "TT";
     return `
       <button
         class="planet ${active ? "is-on" : ""} ${locked ? "is-locked" : ""}"
         data-planet="${planet.id}"
         ${locked ? "disabled" : ""}
         title="${locked ? planet.unlock : planet.name}"
-      >${short}</button>
+      >${planetShort(planet.id)}</button>
     `;
   }).join("");
 }
@@ -115,24 +169,37 @@ function renderBuyChips(buyMode: BuyMode): string {
   ).join("");
 }
 
+function renderDockTabs(tab: DockTab): string {
+  return DOCK_TABS.map(
+    (item) => `
+      <button class="dock-tab ${tab === item.id ? "is-on" : ""}" data-tab="${item.id}">
+        ${item.label}
+      </button>
+    `,
+  ).join("");
+}
+
 function renderDockActions(state: GameState, buyMode: BuyMode, selected: number, screen: UiView["screen"]): string {
+  if (screen === "outside") {
+    const advice = adviseFarm(state, buyMode);
+    return `
+      <button class="buy" data-buy-best ${advice.bestIndex !== null ? "" : "disabled"}>
+        ${bestButtonText(state, buyMode, advice)}
+      </button>
+    `;
+  }
   const def = BUSINESSES[state.planet][selected];
   const row = state.businesses[state.planet][selected];
   if (!def || !row) return "";
   const quote = quotedBuy(state, selected, buyMode);
-  const name = screen === "outside" ? def.name : undefined;
   const hireDisabled = row.manager || row.owned <= 0 || state.views < def.managerCost;
   return `
     <button class="buy" data-dock-buy ${quote.canBuy ? "" : "disabled"}>
-      ${buyButtonText(quote, buyMode, name)}
+      ${buyButtonText(quote, buyMode)}
     </button>
-    ${
-      screen === "inside"
-        ? `<button class="mgr" data-dock-mgr ${hireDisabled ? "disabled" : ""}>
-            ${row.manager ? "Managed" : `${def.managerName} · ${formatNum(def.managerCost)}`}
-          </button>`
-        : ""
-    }
+    <button class="mgr" data-dock-mgr ${hireDisabled ? "disabled" : ""}>
+      ${row.manager ? "Managed" : `${def.managerName} · ${formatNum(def.managerCost)}`}
+    </button>
   `;
 }
 
@@ -165,7 +232,7 @@ function renderOutside(state: GameState, buyMode: BuyMode, selected: number): st
               data-row="${index}"
               data-select="${index}"
             >
-              <button class="row-enter" data-enter="${index}">
+              <div class="row-main">
                 <span class="icon">${def.icon}</span>
                 <span class="row-copy">
                   <strong>${def.name}</strong>
@@ -177,7 +244,8 @@ function renderOutside(state: GameState, buyMode: BuyMode, selected: number): st
                 </span>
                 <span class="owned">x${formatNum(row.owned)}</span>
                 <span class="badge ${badge ? `is-${badge}` : "is-off"}" data-row-badge>${badge ? badge.toUpperCase() : ""}</span>
-              </button>
+              </div>
+              <button class="row-open" data-enter="${index}" aria-label="Open ${def.name}">Open</button>
             </article>
           `;
         })
@@ -190,7 +258,7 @@ function renderInside(state: GameState, selected: number): string {
   const def = BUSINESSES[state.planet][selected];
   const row = state.businesses[state.planet][selected];
   if (!def || !row) return "";
-  const income = cycleIncome(state.planet, selected, row.owned, state.prestigeMult);
+  const income = cycleIncome(state.planet, selected, row.owned, totalMult(state));
   const milestone = nextMilestone(row.owned);
   const cycle = effectiveCycleSec(def.cycleSec, row.owned);
   const pct = Math.min(100, row.progress * 100);
@@ -227,6 +295,133 @@ function renderInside(state: GameState, selected: number): string {
   `;
 }
 
+function renderManagers(state: GameState): string {
+  return `
+    <div class="farm-head">
+      <strong>Managers</strong>
+      <p>Same views. Hire any unlocked farm.</p>
+    </div>
+    <button class="buy" data-hire-all ${managerSlots(state).some((slot) => slot.affordable) ? "" : "disabled"}>
+      Hire all affordable
+    </button>
+    ${unlockedPlanets(state)
+      .map((planet) => {
+        const planetName = PLANETS.find((row) => row.id === planet)?.name ?? planet;
+        return `
+          <section class="mgr-block" data-mgr-planet="${planet}">
+            <h3>${planetName}</h3>
+            ${BUSINESSES[planet]
+              .map((def, index) => {
+                const row = state.businesses[planet][index];
+                const hired = row.manager;
+                const locked = row.owned <= 0;
+                const disabled = hired || locked || state.views < def.managerCost;
+                return `
+                  <article class="mgr-row ${locked ? "is-dim" : ""}">
+                    <span class="icon">${def.icon}</span>
+                    <span class="row-copy">
+                      <strong>${def.name}</strong>
+                      <small>${locked ? "Own one first" : hired ? "On autopilot" : def.managerName}</small>
+                    </span>
+                    <button
+                      class="mgr"
+                      data-hire
+                      data-hire-planet="${planet}"
+                      data-hire-index="${index}"
+                      ${disabled ? "disabled" : ""}
+                    >${hired ? "Managed" : `Hire · ${formatNum(def.managerCost)}`}</button>
+                  </article>
+                `;
+              })
+              .join("")}
+          </section>
+        `;
+      })
+      .join("")}
+  `;
+}
+
+function renderEvent(state: GameState, now: number): string {
+  const live = currentEvent(now);
+  const left = Math.max(0, live.endsAt - now);
+  const claimed = state.event.claimedDropId === live.def.id;
+  const extraVps = extraEventVps(state.prestigeMult, live.def);
+  return `
+    <div class="farm-head">
+      <strong>${live.def.name}</strong>
+      <p>Ends in ${formatTime(left)} · ${live.def.bonusMult}x farms</p>
+    </div>
+    <article class="biz">
+      <p class="blurb">${live.def.blurb}</p>
+      <div class="meta">
+        <span>Extra: ${live.def.extraName}</span>
+        <span>${formatNum(extraVps)}/s</span>
+      </div>
+      <p class="blurb">Clout ${formatNum(state.event.clout)} · live drop, no checkout.</p>
+      <button class="buy" data-claim-drop ${claimed ? "disabled" : ""}>
+        ${claimed ? "Drop claimed" : `Claim drop · ${formatNum(live.def.dropViews)} views`}
+      </button>
+    </article>
+    <div class="track">
+      ${EVENT_SHOP.map((item) => {
+        const done = state.event.claimed.includes(item.id);
+        const can = !done && state.event.clout >= item.clout;
+        const prize =
+          item.kind === "title"
+            ? item.title
+            : item.kind === "mult"
+              ? `+${item.amount}x`
+              : `${formatNum(item.amount ?? 0)} views`;
+        return `
+          <article class="track-row">
+            <span class="row-copy">
+              <strong>${item.name}</strong>
+              <small>${item.clout} clout · ${prize}</small>
+            </span>
+            <button class="mgr" data-claim-event="${item.id}" ${can ? "" : "disabled"}>
+              ${done ? "Owned" : "Claim"}
+            </button>
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderPass(state: GameState): string {
+  const claimed = state.pass.claimed.length;
+  return `
+    <div class="farm-head">
+      <strong>Infinity Intern</strong>
+      <p>${claimed}/${PASS_TIERS.length} · lifetime views</p>
+    </div>
+    <p class="blurb">Free track. Earn it by posting. Nothing to buy.</p>
+    <div class="track">
+      ${PASS_TIERS.map((tier) => {
+        const done = state.pass.claimed.includes(tier.id);
+        const can = !done && state.lifetimeViews >= tier.at;
+        const prize =
+          tier.kind === "title"
+            ? tier.title
+            : tier.kind === "mult"
+              ? `+${tier.amount}x`
+              : `${formatNum(tier.amount ?? 0)} views`;
+        return `
+          <article class="track-row ${done ? "is-done" : ""}">
+            <span class="row-copy">
+              <strong>${tier.name}</strong>
+              <small>${formatNum(tier.at)} views · ${prize}</small>
+            </span>
+            <button class="mgr" data-claim-pass="${tier.id}" ${can ? "" : "disabled"}>
+              ${done ? "Claimed" : can ? "Claim" : "Locked"}
+            </button>
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
 function renderSheet(state: GameState, sheet: UiSheet): string {
   if (sheet === "prestige") {
     const gain = prestigeGain(state.viewsThisRun).toFixed(2);
@@ -234,7 +429,7 @@ function renderSheet(state: GameState, sheet: UiSheet): string {
       <div class="sheet is-on" data-sheet>
         <div class="sheet-card">
           <strong>Go viral?</strong>
-          <p>Reset both planets. Keep +${gain}x. TikTok stays unlocked.</p>
+          <p>Reset every farm. Keep +${gain}x. Unlocked planets stay.</p>
           <div class="sheet-actions">
             <button class="ghost-lite" data-sheet-close>Cancel</button>
             <button class="ghost" data-prestige-go>Prestige</button>
@@ -260,6 +455,32 @@ function renderSheet(state: GameState, sheet: UiSheet): string {
   return "";
 }
 
+function eventPip(now: number): string {
+  const live = currentEvent(now);
+  return `${live.def.name} · ${formatTime(Math.max(0, live.endsAt - now))} · ${live.def.bonusMult}x`;
+}
+
+function passPip(state: GameState): string {
+  const next = PASS_TIERS.find((tier) => !state.pass.claimed.includes(tier.id));
+  const have = state.pass.claimed.length;
+  if (!next) return `Pass ${have}/${PASS_TIERS.length} · maxed`;
+  return `Pass ${have}/${PASS_TIERS.length} · ${formatNum(state.lifetimeViews)} / ${formatNum(next.at)}`;
+}
+
+function renderCamera(
+  state: GameState,
+  buyMode: BuyMode,
+  view: UiView,
+  now: number,
+): string {
+  if (view.tab === "managers") return renderManagers(state);
+  if (view.tab === "event") return renderEvent(state, now);
+  if (view.tab === "pass") return renderPass(state);
+  return view.screen === "inside"
+    ? renderInside(state, view.selected)
+    : renderOutside(state, buyMode, view.selected);
+}
+
 export function renderApp(
   root: HTMLElement,
   state: GameState,
@@ -267,16 +488,20 @@ export function renderApp(
   view: UiView,
   sheet: UiSheet,
   handlers: UiHandlers,
+  now = 0,
 ): void {
   const goal = goalCopy(state);
-  const camera =
-    view.screen === "inside" ? renderInside(state, view.selected) : renderOutside(state, buyMode, view.selected);
+  const clock = now > 0 ? now : Date.now();
+  const camera = renderCamera(state, buyMode, view, clock);
 
   root.innerHTML = `
     <div class="frame">
       <header class="chrome-top">
         <div class="brand-row">
-          <p class="wordmark">Slop Capitalist</p>
+          <div>
+            <p class="wordmark">Slop Capitalist</p>
+            ${state.title ? `<p class="flavor-title">${state.title}</p>` : ""}
+          </div>
           <button class="overflow" data-overflow aria-label="Settings">…</button>
         </div>
         <div class="wallet">
@@ -286,7 +511,7 @@ export function renderApp(
           </div>
           <div>
             <span class="label">Per second</span>
-            <em id="vps">${formatNum(globalViewsPerSec(state))}/s</em>
+            <em id="vps">${formatNum(globalViewsPerSec(state, clock))}/s</em>
           </div>
           <div>
             <span class="label">Viral</span>
@@ -302,17 +527,26 @@ export function renderApp(
           <button class="ghost" data-prestige ${goal.ready ? "" : "disabled"}>Prestige</button>
           <nav class="planets" aria-label="Planets">${renderPlanetChips(state)}</nav>
         </div>
+        <div class="pips">
+          <p id="event-pip">${eventPip(clock)}</p>
+          <p id="pass-pip">${passPip(state)}</p>
+        </div>
       </header>
       <main class="camera">${camera}</main>
       <footer class="chrome-bot">
         <div id="toast-slot" class="toast-slot" role="status"></div>
-        <div class="dock-modes">
-          <span>Buy</span>
-          ${renderBuyChips(buyMode)}
-        </div>
-        <div class="dock-actions" id="dock-actions">
-          ${renderDockActions(state, buyMode, view.selected, view.screen)}
-        </div>
+        <nav class="dock-tabs" aria-label="Dock">${renderDockTabs(view.tab)}</nav>
+        ${
+          view.tab === "buy"
+            ? `<div class="dock-modes">
+                <span>Buy</span>
+                ${renderBuyChips(buyMode)}
+              </div>
+              <div class="dock-actions" id="dock-actions">
+                ${renderDockActions(state, buyMode, view.selected, view.screen)}
+              </div>`
+            : ""
+        }
       </footer>
       ${renderSheet(state, sheet)}
     </div>
@@ -328,6 +562,9 @@ function bindChrome(root: HTMLElement, view: UiView, handlers: UiHandlers): void
   root.querySelectorAll<HTMLButtonElement>("[data-buymode]").forEach((btn) => {
     btn.addEventListener("click", () => handlers.onBuyMode(parseBuyMode(btn.dataset.buymode)));
   });
+  root.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => handlers.onTab(btn.dataset.tab as DockTab));
+  });
   root.querySelector("[data-prestige]")?.addEventListener("click", handlers.onPrestigeAsk);
   root.querySelector("[data-prestige-go]")?.addEventListener("click", handlers.onPrestigeConfirm);
   root.querySelector("[data-sheet-close]")?.addEventListener("click", handlers.onSheetClose);
@@ -336,6 +573,18 @@ function bindChrome(root: HTMLElement, view: UiView, handlers: UiHandlers): void
   root.querySelector("[data-farm]")?.addEventListener("click", handlers.onFarm);
   root.querySelector("[data-dock-buy]")?.addEventListener("click", () => handlers.onBuy(view.selected));
   root.querySelector("[data-dock-mgr]")?.addEventListener("click", () => handlers.onManager(view.selected));
+  root.querySelector("[data-claim-drop]")?.addEventListener("click", handlers.onClaimDrop);
+  root.querySelectorAll<HTMLButtonElement>("[data-claim-event]").forEach((btn) => {
+    btn.addEventListener("click", () => handlers.onClaimEvent(btn.dataset.claimEvent ?? ""));
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-claim-pass]").forEach((btn) => {
+    btn.addEventListener("click", () => handlers.onClaimPass(btn.dataset.claimPass ?? ""));
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-hire]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      handlers.onManager(Number(btn.dataset.hireIndex), btn.dataset.hirePlanet as PlanetId);
+    });
+  });
 
   root.querySelectorAll<HTMLElement>("[data-select]").forEach((row) => {
     row.addEventListener("click", (event) => {
@@ -436,21 +685,77 @@ function patchInside(root: HTMLElement, state: GameState, selected: number): voi
   }
 }
 
+function patchManagers(root: HTMLElement, state: GameState): void {
+  root.querySelectorAll<HTMLButtonElement>("[data-hire]").forEach((btn) => {
+    const planet = btn.dataset.hirePlanet as PlanetId;
+    const index = Number(btn.dataset.hireIndex);
+    const def = BUSINESSES[planet]?.[index];
+    const row = state.businesses[planet]?.[index];
+    if (!def || !row) return;
+    if (row.manager) {
+      btn.disabled = true;
+      btn.textContent = "Managed";
+      return;
+    }
+    btn.disabled = row.owned <= 0 || state.views < def.managerCost;
+    btn.textContent = `Hire · ${formatNum(def.managerCost)}`;
+  });
+}
+
+function patchEvent(root: HTMLElement, state: GameState, now: number): void {
+  const live = currentEvent(now);
+  const drop = root.querySelector<HTMLButtonElement>("[data-claim-drop]");
+  if (drop) {
+    const claimed = state.event.claimedDropId === live.def.id;
+    drop.disabled = claimed;
+    drop.textContent = claimed ? "Drop claimed" : `Claim drop · ${formatNum(live.def.dropViews)} views`;
+  }
+  root.querySelectorAll<HTMLButtonElement>("[data-claim-event]").forEach((btn) => {
+    const id = btn.dataset.claimEvent ?? "";
+    const item = EVENT_SHOP.find((row) => row.id === id);
+    if (!item) return;
+    const done = state.event.claimed.includes(id);
+    btn.disabled = done || state.event.clout < item.clout;
+    btn.textContent = done ? "Owned" : "Claim";
+  });
+}
+
+function patchPass(root: HTMLElement, state: GameState): void {
+  root.querySelectorAll<HTMLButtonElement>("[data-claim-pass]").forEach((btn) => {
+    const id = btn.dataset.claimPass ?? "";
+    const tier = PASS_TIERS.find((row) => row.id === id);
+    if (!tier) return;
+    const done = state.pass.claimed.includes(id);
+    const can = !done && state.lifetimeViews >= tier.at;
+    btn.disabled = !can;
+    btn.textContent = done ? "Claimed" : can ? "Claim" : "Locked";
+  });
+}
+
 export function patchMeters(
   root: HTMLElement,
   state: GameState,
   buyMode: BuyMode,
   view: UiView,
+  now = 0,
 ): void {
+  const clock = now > 0 ? now : Date.now();
   const views = root.querySelector("#views");
   const vps = root.querySelector("#vps");
   const mult = root.querySelector("#mult");
   if (views) views.textContent = formatNum(state.views);
-  if (vps) vps.textContent = `${formatNum(globalViewsPerSec(state))}/s`;
+  if (vps) vps.textContent = `${formatNum(globalViewsPerSec(state, clock))}/s`;
   if (mult) mult.textContent = `${state.prestigeMult.toFixed(2)}x`;
   patchGoal(root, state);
+  const eventEl = root.querySelector("#event-pip");
+  const passEl = root.querySelector("#pass-pip");
+  if (eventEl) eventEl.textContent = eventPip(clock);
+  if (passEl) passEl.textContent = passPip(state);
 
-  if (view.screen === "outside") patchOutsideRows(root, state, buyMode, view.selected);
+  if (view.tab === "managers") patchManagers(root, state);
+  else if (view.tab === "event") patchEvent(root, state, clock);
+  else if (view.tab === "pass") patchPass(root, state);
+  else if (view.screen === "outside") patchOutsideRows(root, state, buyMode, view.selected);
   else patchInside(root, state, view.selected);
 
   const dockBuy = root.querySelector<HTMLButtonElement>("[data-dock-buy]");

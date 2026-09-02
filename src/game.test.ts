@@ -1,14 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { BUSINESSES, PRESTIGE_AT, SAVE_KEY } from "./data";
+import { BUSINESSES, EVENT_PERIOD_MS, EVENTS, PRESTIGE_AT, SAVE_KEY } from "./data";
 import {
   adviseFarm,
   applyOffline,
   buy,
   buyCost,
   canPrestige,
+  claimEventDrop,
+  claimEventShop,
+  claimPass,
+  currentEvent,
   cycleIncome,
   defaultSelected,
   effectiveCycleSec,
+  extraEventVps,
   hireManager,
   loadGame,
   maxAffordable,
@@ -21,6 +26,8 @@ import {
   prestigeGain,
   quotedBuy,
   resolveBuyCount,
+  saveGame,
+  setPlanet,
   startCycle,
   tapBar,
   tick,
@@ -110,20 +117,28 @@ describe("buy bar", () => {
 });
 
 describe("cycle speed", () => {
-  it("shrinks only on milestone ranks and floors at 0.25s", () => {
+  it("halves only at 25 / 100 / 400 / 1000 and floors at 0.25s", () => {
     expect(effectiveCycleSec(0.6, 1)).toBeCloseTo(0.6, 8);
     expect(effectiveCycleSec(0.6, 24)).toBeCloseTo(0.6, 8);
-    expect(effectiveCycleSec(0.6, 25)).toBeCloseTo(0.45, 8);
-    expect(effectiveCycleSec(0.6, 50)).toBeCloseTo(0.3375, 8);
-    expect(effectiveCycleSec(0.6, 100)).toBeCloseTo(0.253125, 8);
+    expect(effectiveCycleSec(0.6, 25)).toBeCloseTo(0.3, 8);
+    expect(effectiveCycleSec(0.6, 50)).toBeCloseTo(0.3, 8);
+    expect(effectiveCycleSec(0.6, 100)).toBe(0.25);
+    expect(effectiveCycleSec(0.6, 400)).toBe(0.25);
     expect(effectiveCycleSec(0.6, 1000)).toBe(0.25);
 
     expect(effectiveCycleSec(24, 1)).toBeCloseTo(24, 8);
     expect(effectiveCycleSec(24, 24)).toBeCloseTo(24, 8);
-    expect(effectiveCycleSec(24, 25)).toBeCloseTo(18, 8);
-    expect(effectiveCycleSec(24, 100)).toBeCloseTo(24 * 0.75 ** 3, 8);
-    expect(effectiveCycleSec(24, 1000)).toBeCloseTo(24 * 0.75 ** 12, 6);
+    expect(effectiveCycleSec(24, 25)).toBeCloseTo(12, 8);
+    expect(effectiveCycleSec(24, 50)).toBeCloseTo(12, 8);
+    expect(effectiveCycleSec(24, 100)).toBeCloseTo(6, 8);
+    expect(effectiveCycleSec(24, 400)).toBeCloseTo(3, 8);
+    expect(effectiveCycleSec(24, 1000)).toBeCloseTo(1.5, 8);
     expect(effectiveCycleSec(24, 1000)).toBeGreaterThan(0.25);
+  });
+
+  it("still doubles income at every milestone", () => {
+    expect(milestoneMult(50)).toBe(4);
+    expect(effectiveCycleSec(0.6, 50)).toBeCloseTo(effectiveCycleSec(0.6, 25), 8);
   });
 
   it("pays tick and VPS from the effective cycle", () => {
@@ -132,8 +147,8 @@ describe("cycle speed", () => {
     state.businesses.youtube[0].manager = true;
     state.businesses.youtube[0].running = true;
     const income = cycleIncome("youtube", 0, 25, 1);
-    expect(viewsPerSec(state)).toBeCloseTo(income / 0.45, 8);
-    tick(state, 0.44);
+    expect(viewsPerSec(state)).toBeCloseTo(income / 0.3, 8);
+    tick(state, 0.29);
     expect(state.views).toBe(0);
     tick(state, 0.02);
     expect(state.views).toBeCloseTo(income, 8);
@@ -147,7 +162,7 @@ describe("cycle speed", () => {
     state.lastTs = 1_000;
     const income = cycleIncome("youtube", 0, 25, 1);
     const { earned } = applyOffline(state, 1_000 + 45_000);
-    expect(earned).toBeCloseTo((income / 0.45) * 45, 5);
+    expect(earned).toBeCloseTo((income / 0.3) * 45, 5);
   });
 });
 
@@ -323,7 +338,7 @@ describe("offline + prestige", () => {
     const fresh = loadGame("nope");
     expect(fresh.planet).toBe("youtube");
     expect(fresh.businesses.youtube[0].owned).toBe(1);
-    expect(fresh.v).toBe(2);
+    expect(fresh.v).toBe(3);
     expect(fresh.viewsThisRun).toBe(0);
     expect(fresh.nextPrestigeAt).toBe(PRESTIGE_AT);
   });
@@ -341,7 +356,7 @@ describe("offline + prestige", () => {
         lastTs: 1,
       }),
     );
-    expect(loaded.v).toBe(2);
+    expect(loaded.v).toBe(3);
     expect(loaded.viewsThisRun).toBe(400_000);
     expect(loaded.nextPrestigeAt).toBe(PRESTIGE_AT);
     expect(canPrestige(loaded)).toBe(false);
@@ -387,5 +402,148 @@ describe("offline + prestige", () => {
 
   it("keeps the same localStorage key", () => {
     expect(SAVE_KEY).toBe("slop-capitalist.v1");
+  });
+
+  it("unlocks The Simulation on the second prestige with a starter clip", () => {
+    const state = newGame();
+    state.viewsThisRun = PRESTIGE_AT;
+    state.lifetimeViews = PRESTIGE_AT;
+    prestige(state);
+    expect(state.simulationUnlocked).toBe(false);
+    expect(state.planet).toBe("tiktok");
+    expect(setPlanet(state, "simulation")).toBe(false);
+    state.viewsThisRun = state.nextPrestigeAt;
+    const gain = prestige(state);
+    expect(gain).toBeGreaterThan(0);
+    expect(state.simulationUnlocked).toBe(true);
+    expect(state.planet).toBe("simulation");
+    expect(state.businesses.simulation[0].owned).toBe(1);
+    expect(state.views).toBe(0);
+    expect(canPrestige(state)).toBe(false);
+    expect(setPlanet(state, "simulation")).toBe(true);
+  });
+
+  it("does not softlock The Simulation starter", () => {
+    const state = newGame();
+    state.viewsThisRun = PRESTIGE_AT;
+    state.lifetimeViews = PRESTIGE_AT;
+    prestige(state);
+    state.viewsThisRun = state.nextPrestigeAt;
+    prestige(state);
+    expect(state.planet).toBe("simulation");
+    for (let i = 0; i < 3; i++) {
+      startCycle(state, 0);
+      tick(state, 1.1);
+    }
+    expect(buy(state, 0, 1)).toBe(1);
+    expect(state.businesses.simulation[0].owned).toBe(2);
+  });
+
+  it("hydrates a twice-prestiged v2 save onto The Simulation", () => {
+    const loaded = loadGame(
+      JSON.stringify({
+        v: 2,
+        views: 0,
+        lifetimeViews: 20_000_000,
+        viewsThisRun: 0,
+        nextPrestigeAt: 100_000_000,
+        prestigeMult: 4,
+        tiktokUnlocked: true,
+        planet: "tiktok",
+        lastTs: 1,
+      }),
+    );
+    expect(loaded.v).toBe(3);
+    expect(loaded.simulationUnlocked).toBe(true);
+    expect(loaded.businesses.simulation[0].owned).toBe(1);
+    expect(loaded.event.clout).toBe(0);
+    expect(loaded.pass.claimed).toEqual([]);
+  });
+});
+
+describe("managers from any planet", () => {
+  it("hires on a planet you are not looking at", () => {
+    const state = newGame();
+    state.tiktokUnlocked = true;
+    state.businesses.tiktok[0].owned = 1;
+    state.views = 51_000_000;
+    state.planet = "youtube";
+    expect(hireManager(state, 0, "tiktok")).toBe(true);
+    expect(state.businesses.tiktok[0].manager).toBe(true);
+    expect(state.businesses.youtube[0].manager).toBe(false);
+    expect(hireManager(state, 0)).toBe(true);
+    expect(state.businesses.youtube[0].manager).toBe(true);
+  });
+});
+
+describe("event + pass", () => {
+  it("rotates drops on the local clock", () => {
+    expect(currentEvent(1).def.id).toBe(EVENTS[0].id);
+    expect(currentEvent(EVENT_PERIOD_MS + 1).def.id).toBe(EVENTS[1].id);
+    expect(currentEvent(EVENT_PERIOD_MS * 2 + 1).def.id).toBe(EVENTS[2].id);
+  });
+
+  it("applies the live bonus only when a wall clock is passed", () => {
+    const baseline = newGame();
+    baseline.businesses.youtube[0].manager = true;
+    baseline.businesses.youtube[0].running = true;
+    tick(baseline, 0.6);
+    expect(baseline.views).toBeCloseTo(1, 8);
+
+    const live = newGame();
+    live.businesses.youtube[0].manager = true;
+    live.businesses.youtube[0].running = true;
+    const now = 1;
+    tick(live, 0.6, undefined, now);
+    const extra = extraEventVps(1, EVENTS[0]) * 0.6;
+    expect(live.views).toBeCloseTo(1 * EVENTS[0].bonusMult + extra, 5);
+    expect(live.event.clout).toBeGreaterThan(0);
+  });
+
+  it("persists event claims, clout, and pass unlocks", () => {
+    const state = newGame();
+    const now = 1;
+    expect(claimEventDrop(state, now)).toBe(EVENTS[0].dropViews);
+    expect(claimEventDrop(state, now)).toBe(0);
+    state.event.clout = 40;
+    expect(claimEventShop(state, "sticker")?.id).toBe("sticker");
+    expect(state.title).toBe("Trend Touched");
+    expect(claimEventShop(state, "sticker")).toBeNull();
+    state.lifetimeViews = 10_000;
+    expect(claimPass(state, "intern")?.id).toBe("intern");
+    expect(state.title).toBe("Thumbnail Intern");
+    expect(claimPass(state, "intern")).toBeNull();
+
+    const loaded = loadGame(saveGame(state));
+    expect(loaded.v).toBe(3);
+    expect(loaded.event.claimedDropId).toBe(EVENTS[0].id);
+    expect(loaded.event.claimed).toContain("sticker");
+    expect(loaded.event.clout).toBeCloseTo(35, 8);
+    expect(loaded.pass.claimed).toContain("intern");
+    expect(loaded.title).toBe("Thumbnail Intern");
+    expect(claimEventDrop(loaded, now)).toBe(0);
+    expect(claimPass(loaded, "intern")).toBeNull();
+  });
+
+  it("hydrates missing event and pass fields on old saves", () => {
+    const loaded = loadGame(
+      JSON.stringify({
+        v: 2,
+        views: 40,
+        lifetimeViews: 400_000,
+        viewsThisRun: 400_000,
+        nextPrestigeAt: PRESTIGE_AT,
+        prestigeMult: 1,
+        tiktokUnlocked: false,
+        planet: "youtube",
+        lastTs: 1,
+      }),
+    );
+    expect(loaded.views).toBe(40);
+    expect(loaded.viewsThisRun).toBe(400_000);
+    expect(loaded.event.clout).toBe(0);
+    expect(loaded.pass.claimed).toEqual([]);
+    expect(loaded.simulationUnlocked).toBe(false);
+    expect(loaded.title).toBe("");
   });
 });
