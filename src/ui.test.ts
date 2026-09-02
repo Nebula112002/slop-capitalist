@@ -171,11 +171,19 @@ describe("farm chrome", () => {
     renderApp(root, state, 1, farm, null, noop, 1);
     const chip = root.querySelector("#drop") as HTMLButtonElement;
     expect(chip).toBeTruthy();
-    expect(chip.textContent).toMatch(/Drop \u00d7[\d.]+/);
+    expect(chip.textContent).toMatch(/Trend \u00d7[\d.]+/);
     expect(chip.textContent).not.toMatch(/\+/);
     expect(chip.dataset.sheetOpen).toBe("event");
     expect(root.querySelector("[data-row='0'] [data-row-vps]")?.textContent).toBe("idle");
     expect(root.querySelector("#vps")?.textContent).toBe("0/s");
+  });
+
+  it("teaches that the HUD chip is a timed trend, not a loot drop", () => {
+    const root = document.createElement("div");
+    renderApp(root, newGame(), 1, farm, "event", noop, 1);
+    expect(root.textContent).toContain("Timed trend");
+    expect(root.textContent).toContain("Idle earns nothing");
+    expect(root.querySelector("[data-claim-drop]")?.textContent).toMatch(/Claim .+ views/);
   });
 
   it("keeps the rare jobs out of the dock and inside one menu", () => {

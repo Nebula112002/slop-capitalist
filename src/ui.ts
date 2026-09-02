@@ -325,13 +325,14 @@ function menuHot(state: GameState, now: number): boolean {
 function dropText(state: GameState, now: number): string {
   const live = currentEvent(now);
   const extra = extraEventVps(totalMult(state), live.def);
-  if (viewsPerSec(state) <= 0) return `Drop \u00d7${live.def.bonusMult}`;
-  return `Drop \u00d7${live.def.bonusMult} \u00b7 +${formatNum(extra)}/s`;
+  if (viewsPerSec(state) <= 0) return `Trend \u00d7${live.def.bonusMult}`;
+  return `Trend \u00d7${live.def.bonusMult} \u00b7 +${formatNum(extra)}/s`;
 }
 
-/** Live drop. The \u00d7 hits bars you actually run. Extra does not pay an idle farm. */
 function dropChip(state: GameState, now: number): string {
-  return `<button class="hud-chip" data-sheet-open="event" id="drop" title="Live drop. Boosts bars you post. Idle earns nothing.">${dropText(state, now)}</button>`;
+  const live = currentEvent(now);
+  const label = `Trend ${live.def.name}. Farms you post pay ${live.def.bonusMult} times until it ends. Open for the free view pack.`;
+  return `<button class="hud-chip" data-sheet-open="event" id="drop" title="${label}" aria-label="${label}">${dropText(state, now)}</button>`;
 }
 
 function renderDockActions(state: GameState, buyMode: BuyMode, selected: number, bestMode: boolean): string {
@@ -602,14 +603,15 @@ function renderEvent(state: GameState, now: number): string {
   const claimed = state.event.claimedDropId === live.def.id;
   const extraVps = extraEventVps(totalMult(state), live.def);
   return `
+    <p class="sheet-note">A trend on a local 8-hour clock. Bars you post pay ${live.def.bonusMult}\u00d7 until it ends. Idle earns nothing. The view pack is free, once.</p>
     <p class="sheet-note">${live.def.blurb}</p>
     <dl class="card-stats">
-      <div><dt>Farms</dt><dd>${live.def.bonusMult}\u00d7</dd></div>
-      <div><dt>${live.def.extraName}</dt><dd>${formatNum(extraVps)}/s while posting</dd></div>
+      <div><dt>Your farms</dt><dd>${live.def.bonusMult}\u00d7 while posting</dd></div>
+      <div><dt>${live.def.extraName}</dt><dd>+${formatNum(extraVps)}/s while posting</dd></div>
       <div><dt>Clout</dt><dd>${formatNum(state.event.clout)}</dd></div>
     </dl>
     <button class="buy" data-claim-drop ${claimed ? "disabled" : ""}>
-      ${claimed ? "Drop claimed" : `Claim drop \u00b7 ${formatNum(live.def.dropViews)} views`}
+      ${claimed ? "Views claimed" : `Claim ${formatNum(live.def.dropViews)} views`}
     </button>
     <div class="list-block">
       <h3>Clout track</h3>
@@ -788,8 +790,8 @@ function renderMenu(state: GameState, now: number): string {
     ),
     menuRow(
       'data-sheet-open="event"',
-      "Drop",
-      `${live.def.name} \u00b7 ${live.def.bonusMult}\u00d7 farms \u00b7 ${formatTime(left)} left`,
+      "Trend",
+      `${live.def.name} \u00b7 farms \u00d7${live.def.bonusMult} \u00b7 ${formatTime(left)} left`,
       dropHot(state, now) ? "Free" : "",
     ),
     menuRow(
@@ -1042,7 +1044,7 @@ function renderSheet(state: GameState, sheet: UiSheet, now: number): string {
     return sheetShell({
       key: "event",
       title: live.def.name,
-      sub: `Ends in ${formatTime(Math.max(0, live.endsAt - now))}`,
+      sub: `Timed trend. Farms you post pay ${live.def.bonusMult}\u00d7. Ends in ${formatTime(Math.max(0, live.endsAt - now))}.`,
       tall: true,
       body: renderEvent(state, now),
     });
@@ -1613,7 +1615,7 @@ function patchEvent(root: HTMLElement, state: GameState, now: number): void {
   if (drop) {
     const claimed = state.event.claimedDropId === live.def.id;
     drop.disabled = claimed;
-    drop.textContent = claimed ? "Drop claimed" : `Claim drop \u00b7 ${formatNum(live.def.dropViews)} views`;
+    drop.textContent = claimed ? "Views claimed" : `Claim ${formatNum(live.def.dropViews)} views`;
   }
   root.querySelectorAll<HTMLButtonElement>("[data-claim-event]").forEach((btn) => {
     const id = btn.dataset.claimEvent ?? "";

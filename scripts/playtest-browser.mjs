@@ -148,7 +148,7 @@ try {
   await page.waitForSelector("[data-sheet-card]");
   const menu = await page.locator("[data-sheet-card]").innerText();
   notes.push(
-    `menu: managers=${has(menu, "Managers")} drop=${has(menu, "Drop")} pass=${has(menu, "Pass")} stats=${has(menu, "Stats")} settings=${has(menu, "Settings")}`,
+    `menu: managers=${has(menu, "Managers")} drop=${has(menu, "Trend")} pass=${has(menu, "Pass")} stats=${has(menu, "Stats")} settings=${has(menu, "Settings")}`,
   );
   notes.push(`farm still mounted under the menu: ${(await page.locator("[data-row]").count()) >= rowsBefore}`);
   notes.push(`sheet takes focus: ${await page.evaluate(() => Boolean(document.activeElement?.closest("[data-sheet-card]")))}`);
