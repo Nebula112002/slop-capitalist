@@ -332,3 +332,4 @@ export const CHEST_RATE = 0.25;
 export const SAVE_VERSION = 3;
 export const OFFLINE_CAP_MS = 8 * 60 * 60 * 1000;
 export const SAVE_KEY = "slop-capitalist.v1";
+export const UI_ROUTE_KEY = "slop-capitalist.ui";

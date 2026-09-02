@@ -8,7 +8,6 @@ import {
   buy,
   buyBest,
   canAlgo,
-  canPrestige,
   claimChest,
   claimEventDrop,
   claimEventShop,
@@ -36,11 +35,14 @@ import {
 } from "./game";
 import {
   flashNudge,
+  hasSaveProgress,
   patchMeters,
+  persistUiRoute,
+  readUiRoute,
   renderApp,
   showAway,
   showToast,
-  type DockTab,
+  type MoreSheet,
   type UiHandlers,
   type UiSheet,
   type UiView,
@@ -53,19 +55,27 @@ const root = mount;
 
 let state: GameState = readStorage();
 let buyMode: BuyMode = 1;
-let view: UiView = homeView(state, buyMode);
-let sheet: UiSheet = null;
+let view: UiView = bootView(state, buyMode);
+let sheet: UiSheet = view.screen === "landing" ? null : state.pendingChest ? "chest" : null;
 let taps: TapSession = newTapSession();
 let last = performance.now();
 let saveAt = 0;
 
 const away = applyOffline(state);
 offerComebackChest(state, away.earned, away.offlineMs);
-if (state.pendingChest) sheet = "chest";
+if (view.screen !== "landing" && state.pendingChest) sheet = "chest";
 persist(state);
 
-function homeView(game: GameState, mode: BuyMode, tab: DockTab = "buy"): UiView {
-  return { screen: "outside", selected: defaultSelected(game, mode), tab };
+function homeView(game: GameState, mode: BuyMode, qtyOpen = false): UiView {
+  return { screen: "outside", selected: defaultSelected(game, mode), qtyOpen };
+}
+
+function landingView(game: GameState, mode: BuyMode): UiView {
+  return { screen: "landing", selected: defaultSelected(game, mode), qtyOpen: false };
+}
+
+function bootView(game: GameState, mode: BuyMode): UiView {
+  return readUiRoute() === "farm" ? homeView(game, mode) : landingView(game, mode);
 }
 
 const handlers: UiHandlers = {
@@ -139,12 +149,11 @@ const handlers: UiHandlers = {
       return;
     }
     if (setPlanet(state, planet)) {
-      view = { screen: "outside", selected: defaultSelected(state, buyMode), tab: view.tab };
+      view = { screen: "outside", selected: defaultSelected(state, buyMode), qtyOpen: view.qtyOpen };
       rebuild();
     }
   },
   onPrestigeAsk() {
-    if (!canPrestige(state)) return;
     sheet = "prestige";
     rebuild();
   },
@@ -154,7 +163,7 @@ const handlers: UiHandlers = {
     sheet = null;
     taps = newTapSession();
     if (gain > 0) {
-      view = homeView(state, buyMode, view.tab);
+      view = homeView(state, buyMode, view.qtyOpen);
       persist(state);
       rebuild();
       playJuice("prestige", state.muted);
@@ -173,7 +182,7 @@ const handlers: UiHandlers = {
     sheet = null;
     taps = newTapSession();
     if (gain > 0) {
-      view = homeView(state, buyMode, view.tab);
+      view = homeView(state, buyMode, view.qtyOpen);
       persist(state);
       rebuild();
       playJuice("prestige", state.muted);
@@ -214,6 +223,7 @@ const handlers: UiHandlers = {
     localStorage.removeItem(SAVE_KEY);
     state = readStorage();
     buyMode = 1;
+    persistUiRoute("farm");
     view = homeView(state, buyMode);
     sheet = null;
     taps = newTapSession();
@@ -221,9 +231,38 @@ const handlers: UiHandlers = {
     rebuild();
     showToast("Fresh account. Post your first cursed short.");
   },
-  onTab(tab) {
-    view = { ...view, tab };
+  onOpenSheet(next: MoreSheet) {
+    sheet = next;
     rebuild();
+  },
+  onQtyToggle() {
+    view = { ...view, qtyOpen: !view.qtyOpen };
+    rebuild();
+  },
+  onHome() {
+    persistUiRoute("landing");
+    view = landingView(state, buyMode);
+    sheet = null;
+    rebuild();
+  },
+  onContinue() {
+    persistUiRoute("farm");
+    view = homeView(state, buyMode, view.qtyOpen);
+    sheet = state.pendingChest ? "chest" : null;
+    rebuild();
+  },
+  onNewRun() {
+    if (hasSaveProgress(state) && !window.confirm("Wipe this save? The algorithm forgets you.")) return;
+    localStorage.removeItem(SAVE_KEY);
+    state = readStorage();
+    buyMode = 1;
+    persistUiRoute("farm");
+    view = homeView(state, buyMode);
+    sheet = null;
+    taps = newTapSession();
+    resetFlavorSession();
+    rebuild();
+    showToast("Fresh account. Post your first cursed short.");
   },
   onClaimDrop() {
     const views = claimEventDrop(state, Date.now());
@@ -288,7 +327,8 @@ const handlers: UiHandlers = {
     }
     state = loaded;
     taps = newTapSession();
-    view = homeView(state, buyMode, view.tab);
+    persistUiRoute("farm");
+    view = homeView(state, buyMode, view.qtyOpen);
     sheet = state.pendingChest ? "chest" : null;
     persist(state);
     rebuild();
