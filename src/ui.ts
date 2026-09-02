@@ -1,6 +1,7 @@
 import {
   BUSINESSES,
   EVENT_SHOP,
+  HYPE_SHOP,
   PASS_TIERS,
   PLANETS,
   UI_ROUTE_KEY,
@@ -10,12 +11,17 @@ import { formatCycle, formatNum, formatTime } from "./format";
 import { pickFlavor } from "./flavor";
 import {
   adviseFarm,
+  algoGain,
+  canAlgo,
+  canBuyShop,
   canPrestige,
   currentEvent,
   cycleIncome,
-  effectiveCycleSec,
+  cycleSecFor,
   extraEventVps,
   globalViewsPerSec,
+  managerPrice,
+  managerSlots,
   nextMilestone,
   nextPlanetName,
   parseBuyMode,
@@ -24,17 +30,17 @@ import {
   quotedBuy,
   recap,
   rowVps,
+  shopCost,
+  shopLevel,
   timeToRankSec,
   totalMult,
   unlockedPlanets,
-  algoGain,
-  canAlgo,
-  managerSlots,
   type BuyMode,
   type BuyQuote,
   type FarmAdvice,
   type GameState,
 } from "./game";
+import { uiKeyFor } from "./users";
 
 export type MoreSheet = "managers" | "event" | "pass";
 export type DockTab = MoreSheet | "buy";
@@ -57,6 +63,13 @@ export type UiSheet =
 
 export type UiRoute = "landing" | "farm";
 
+export type UiSession = {
+  username: string;
+  names: string[];
+};
+
+export const EMPTY_SESSION: UiSession = { username: "", names: [] };
+
 export type UiHandlers = {
   onBuyBest: () => void;
   onBuy: (index: number) => void;
@@ -78,6 +91,8 @@ export type UiHandlers = {
   onHome: () => void;
   onContinue: () => void;
   onNewRun: () => void;
+  onSignIn: (username: string) => void;
+  onBuyShop: (id: string) => void;
   onClaimDrop: () => void;
   onClaimEvent: (id: string) => void;
   onClaimPass: (id: string) => void;
@@ -108,11 +123,12 @@ export function hasSaveProgress(state: GameState): boolean {
   );
 }
 
-export function readUiRoute(storage?: Storage): UiRoute {
+export function readUiRoute(storage?: Storage, username?: string): UiRoute {
   const store = storage ?? (typeof localStorage !== "undefined" ? localStorage : null);
   if (!store) return "landing";
   try {
-    const raw = store.getItem(UI_ROUTE_KEY);
+    const key = username ? uiKeyFor(username) : UI_ROUTE_KEY;
+    const raw = store.getItem(key) ?? (username ? store.getItem(UI_ROUTE_KEY) : null);
     if (!raw) return "landing";
     const parsed = JSON.parse(raw) as { screen?: string };
     return parsed.screen === "farm" ? "farm" : "landing";
@@ -121,10 +137,28 @@ export function readUiRoute(storage?: Storage): UiRoute {
   }
 }
 
-export function persistUiRoute(screen: UiRoute, storage?: Storage): void {
+export function persistUiRoute(screen: UiRoute, storage?: Storage, username?: string): void {
   const store = storage ?? (typeof localStorage !== "undefined" ? localStorage : null);
   if (!store) return;
-  store.setItem(UI_ROUTE_KEY, JSON.stringify({ screen }));
+  const payload = JSON.stringify({ screen });
+  if (username) store.setItem(uiKeyFor(username), payload);
+  store.setItem(UI_ROUTE_KEY, payload);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function shopHot(state: GameState): boolean {
+  return HYPE_SHOP.some((item) => canBuyShop(state, item.id));
+}
+
+function usernameActive(current: string, name: string): boolean {
+  return current.trim().toLowerCase() === name.trim().toLowerCase();
 }
 
 function chipLabel(mode: BuyMode): string {
@@ -145,8 +179,9 @@ function goalCopy(state: GameState): { title: string; detail: string; ready: boo
   const title = state.simulationUnlocked
     ? "Go even more viral"
     : `Unlock ${nextPlanetName(state)}`;
+  const gain = prestigeGain(state.viewsThisRun, state.prestigeCount);
   const detail = ready
-    ? `Reset every farm. Keep a +${prestigeGain(state.viewsThisRun).toFixed(2)}x multiplier.`
+    ? `Reset every farm. Bank ${gain.toFixed(1)} Hype. Planets stay unlocked.`
     : `${formatNum(state.viewsThisRun)} / ${formatNum(state.nextPrestigeAt)}`;
   return { title, detail, ready, pct };
 }
@@ -234,8 +269,8 @@ function renderDockActions(
   const hire =
     screen === "inside"
       ? `
-    <button class="mgr" data-dock-mgr ${row.manager || row.owned <= 0 || state.views < def.managerCost ? "disabled" : ""}>
-      ${row.manager ? "Managed" : `${def.managerName} · ${formatNum(def.managerCost)}`}
+    <button class="mgr" data-dock-mgr ${row.manager || row.owned <= 0 || state.views < managerPrice(state, state.planet, selected) ? "disabled" : ""}>
+      ${row.manager ? "Managed" : `${def.managerName} · ${formatNum(managerPrice(state, state.planet, selected))}`}
     </button>`
       : "";
   return `
@@ -262,7 +297,7 @@ function renderOutside(state: GameState, buyMode: BuyMode, selected: number): st
           const row = rows[index];
           const locked = row.owned <= 0 && index > 0 && rows[index - 1].owned <= 0;
           const next = nextMilestone(row.owned);
-          const cycle = effectiveCycleSec(def.cycleSec, row.owned);
+          const cycle = cycleSecFor(def.cycleSec, row.owned, state.shop?.tempo ?? 0);
           const vps = rowVps(state, index);
           const eta = timeToRankSec(state, index);
           const badge = advice.badges[index];
@@ -303,7 +338,7 @@ function renderInside(state: GameState, selected: number): string {
   if (!def || !row) return "";
   const income = cycleIncome(state.planet, selected, row.owned, totalMult(state));
   const milestone = nextMilestone(row.owned);
-  const cycle = effectiveCycleSec(def.cycleSec, row.owned);
+  const cycle = cycleSecFor(def.cycleSec, row.owned, state.shop?.tempo ?? 0);
   const pct = Math.min(100, row.progress * 100);
   const hint = row.manager
     ? "On autopilot · tap to refresh"
@@ -358,7 +393,8 @@ function renderManagers(state: GameState): string {
                 const row = state.businesses[planet][index];
                 const hired = row.manager;
                 const locked = row.owned <= 0;
-                const disabled = hired || locked || state.views < def.managerCost;
+                const cost = managerPrice(state, planet, index);
+                const disabled = hired || locked || state.views < cost;
                 return `
                   <article class="mgr-row ${locked ? "is-dim" : ""}">
                     <span class="icon">${def.icon}</span>
@@ -372,7 +408,7 @@ function renderManagers(state: GameState): string {
                       data-hire-planet="${planet}"
                       data-hire-index="${index}"
                       ${disabled ? "disabled" : ""}
-                    >${hired ? "Managed" : `Hire · ${formatNum(def.managerCost)}`}</button>
+                    >${hired ? "Managed" : `Hire · ${formatNum(cost)}`}</button>
                   </article>
                 `;
               })
@@ -388,7 +424,7 @@ function renderEvent(state: GameState, now: number): string {
   const live = currentEvent(now);
   const left = Math.max(0, live.endsAt - now);
   const claimed = state.event.claimedDropId === live.def.id;
-  const extraVps = extraEventVps(state.prestigeMult, live.def);
+  const extraVps = extraEventVps(totalMult(state), live.def);
   return `
     <div class="farm-head">
       <strong>${live.def.name}</strong>
@@ -465,28 +501,55 @@ function renderPass(state: GameState): string {
   `;
 }
 
+function renderHypeShop(state: GameState): string {
+  return `
+    <div class="hype-shop">
+      <strong>Hype shop</strong>
+      <p>Banked ${formatNum(state.hype)} Hype. Permanent. Survives prestige.</p>
+      ${HYPE_SHOP.map((item) => {
+        const level = shopLevel(state, item.id);
+        const maxed = level >= item.max;
+        const cost = shopCost(item.id, level);
+        const can = canBuyShop(state, item.id);
+        return `
+          <article class="shop-row">
+            <span class="row-copy">
+              <strong>${item.name} ${level}/${item.max}</strong>
+              <small>${item.blurb}</small>
+            </span>
+            <button class="mgr" data-shop-buy="${item.id}" ${can ? "" : "disabled"}>
+              ${maxed ? "Max" : `Buy · ${formatNum(cost)}`}
+            </button>
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
 function renderSheet(state: GameState, sheet: UiSheet, now: number): string {
   if (sheet === "prestige") {
     const goal = goalCopy(state);
-    const gain = prestigeGain(state.viewsThisRun).toFixed(2);
+    const gain = prestigeGain(state.viewsThisRun, state.prestigeCount);
     const showAlgo = canAlgo(state);
     return `
       <div class="sheet is-on" data-sheet>
         <button class="sheet-back" data-sheet-close aria-label="Close"></button>
-        <div class="sheet-card">
+        <div class="sheet-card is-tall">
           <strong>${goal.title}</strong>
           <p>${goal.detail}</p>
           <div class="goal-track" aria-hidden="true"><i id="goal-bar" style="width:${goal.pct}%"></i></div>
           <p class="sheet-meter">${formatNum(state.viewsThisRun)} / ${formatNum(state.nextPrestigeAt)}</p>
           <div class="sheet-actions">
             <button class="ghost-lite" data-sheet-close>Cancel</button>
-            <button class="ghost" data-prestige-go ${goal.ready ? "" : "disabled"}>Prestige · +${gain}x</button>
+            <button class="ghost" data-prestige-go ${goal.ready ? "" : "disabled"}>Prestige · +${gain.toFixed(1)} Hype</button>
           </div>
+          ${renderHypeShop(state)}
           ${
             showAlgo
               ? `<div class="sheet-algo">
                   <strong>Enter the algorithm?</strong>
-                  <p>Second layer. Viral resets to 1.00x. Keep +${algoGain(state.prestigeMult).toFixed(2)}x Algo.</p>
+                  <p>Second layer. Viral resets to 1.00x. Keep +${algoGain(state.prestigeMult, state.prestigeCount).toFixed(2)}x Algo. Hype shop stays.</p>
                   <button class="ghost-lite" data-algo-go>Algo</button>
                 </div>`
               : ""
@@ -496,13 +559,13 @@ function renderSheet(state: GameState, sheet: UiSheet, now: number): string {
     `;
   }
   if (sheet === "algo") {
-    const gain = algoGain(state.prestigeMult).toFixed(2);
+    const gain = algoGain(state.prestigeMult, state.prestigeCount).toFixed(2);
     return `
       <div class="sheet is-on" data-sheet>
         <button class="sheet-back" data-sheet-close aria-label="Close"></button>
         <div class="sheet-card">
           <strong>Enter the algorithm?</strong>
-          <p>Second layer. Viral resets to 1.00x. Keep +${gain}x Algo. The Simulation stays open.</p>
+          <p>Second layer. Viral resets to 1.00x. Keep +${gain}x Algo. The Simulation stays open. Hype shop stays.</p>
           <div class="sheet-actions">
             <button class="ghost-lite" data-sheet-close>Cancel</button>
             <button class="ghost" data-algo-go ${canAlgo(state) ? "" : "disabled"}>Algo</button>
@@ -536,8 +599,8 @@ function renderSheet(state: GameState, sheet: UiSheet, now: number): string {
           <strong>Recap</strong>
           <p>
             Lifetime ${formatNum(snap.lifetimeViews)} · this run ${formatNum(snap.viewsThisRun)}<br>
-            Viral ${snap.prestigeMult.toFixed(2)}x · Algo ${snap.algoMult.toFixed(2)}x<br>
-            Prestiges ${snap.prestigeCount} · Algos ${snap.algoCount} · managers ${snap.managers}<br>
+            Viral ${snap.prestigeMult.toFixed(2)}x · shop ${snap.shopViral.toFixed(2)}x · Algo ${snap.algoMult.toFixed(2)}x<br>
+            Hype ${formatNum(snap.hype)} · prestiges ${snap.prestigeCount} · Algos ${snap.algoCount} · managers ${snap.managers}<br>
             Play ${formatTime(snap.playMs)} · chests ${snap.chests}
             ${snap.title ? `<br>Title: ${snap.title}` : ""}
           </p>
@@ -621,8 +684,15 @@ function renderSheet(state: GameState, sheet: UiSheet, now: number): string {
   return "";
 }
 
-function renderLanding(state: GameState): string {
+function renderLanding(state: GameState, session: UiSession): string {
   const progress = hasSaveProgress(state);
+  const last = session.username;
+  const signedIn = Boolean(last);
+  const continueLabel = signedIn
+    ? progress
+      ? `Continue · ${escapeHtml(last)} · ${formatNum(state.views)} views`
+      : `Continue · ${escapeHtml(last)}`
+    : "Continue";
   return `
     <div class="frame landing-frame">
       <main class="landing">
@@ -631,13 +701,29 @@ function renderLanding(state: GameState): string {
         <ul class="landing-bullets">
           <li><strong>Tap a farm, then buy it.</strong> BEST is a mode if you want the math to pick.</li>
           <li><strong>The farm is the game.</strong> Hire, drops, and the pass open as sheets — they never replace the list.</li>
-          <li><strong>Prestige when the chip fills.</strong> Reset every farm. Keep the multiplier.</li>
+          <li><strong>Prestige when the chip fills.</strong> Reset farms. Bank Hype. Spend it on permanent upgrades.</li>
         </ul>
+        <form class="landing-auth" data-signin-form>
+          <label class="landing-label" for="username">Username
+            <input id="username" class="username" data-username type="text" maxlength="24" autocomplete="username" placeholder="Pick a name" value="${escapeHtml(last)}" />
+          </label>
+          <button class="${signedIn ? "ghost-lite" : "buy"}" data-sign-in type="submit">${signedIn ? "Switch / create" : "Sign in"}</button>
+        </form>
+        ${
+          session.names.length
+            ? `<div class="landing-users">${session.names
+                .map(
+                  (name) =>
+                    `<button type="button" class="ghost-lite ${usernameActive(session.username, name) ? "is-on" : ""}" data-user-pick="${escapeHtml(name)}">${escapeHtml(name)}</button>`,
+                )
+                .join("")}</div>`
+            : ""
+        }
         <div class="landing-actions">
-          <button class="buy" data-continue>${progress ? `Continue · ${formatNum(state.views)} views` : "Continue"}</button>
-          <button class="ghost-lite" data-new-run>New run</button>
+          <button class="${signedIn ? "buy" : "ghost-lite"}" data-continue ${signedIn ? "" : "disabled"}>${continueLabel}</button>
+          <button class="ghost-lite" data-new-run ${signedIn ? "" : "disabled"}>New run</button>
         </div>
-        <p class="landing-note">Local only. No ads. No checkout. Lives on this PC.</p>
+        <p class="landing-note">Toy account. Username only — no password, no email. Local to this browser. Switching names keeps the other save. No ads. No checkout. Lives on this PC.</p>
       </main>
     </div>
   `;
@@ -657,11 +743,12 @@ export function renderApp(
   sheet: UiSheet,
   handlers: UiHandlers,
   now = 0,
+  session: UiSession = EMPTY_SESSION,
 ): void {
   const clock = now > 0 ? now : Date.now();
 
   if (view.screen === "landing") {
-    root.innerHTML = `${renderLanding(state)}${renderSheet(state, sheet, clock)}`;
+    root.innerHTML = `${renderLanding(state, session)}${renderSheet(state, sheet, clock)}`;
     bindChrome(root, view, handlers);
     return;
   }
@@ -688,7 +775,12 @@ export function renderApp(
             <strong id="views">${formatNum(state.views)}</strong>
           </div>
           <em id="vps">${formatNum(globalViewsPerSec(state, clock))}/s</em>
-          <span class="stat-chip" id="mult">Viral ${state.prestigeMult.toFixed(2)}x</span>
+          <span class="stat-chip" id="mult">Viral ${totalMult(state).toFixed(2)}x</span>
+          ${
+            state.hype > 0 || state.prestigeCount > 0
+              ? `<span class="stat-chip" id="hype">Hype ${formatNum(state.hype)}</span>`
+              : ""
+          }
           ${
             showAlgo
               ? algoReady
@@ -696,7 +788,7 @@ export function renderApp(
                 : `<span class="stat-chip" id="algo">Algo ${state.algoMult.toFixed(2)}x</span>`
               : ""
           }
-          <button class="stat-chip prestige-chip ${goal.ready ? "is-ready" : ""}" data-prestige>
+          <button class="stat-chip prestige-chip ${goal.ready ? "is-ready" : ""} ${shopHot(state) ? "is-hot" : ""}" data-prestige>
             <span>Prestige</span>
             <i class="mini-bar" aria-hidden="true"><b id="goal-bar" style="width:${goal.pct}%"></b></i>
           </button>
@@ -736,6 +828,17 @@ function bindChrome(root: HTMLElement, view: UiView, handlers: UiHandlers): void
   root.querySelector("[data-home]")?.addEventListener("click", handlers.onHome);
   root.querySelector("[data-continue]")?.addEventListener("click", handlers.onContinue);
   root.querySelector("[data-new-run]")?.addEventListener("click", handlers.onNewRun);
+  root.querySelector("[data-signin-form]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const box = root.querySelector<HTMLInputElement>("[data-username]");
+    handlers.onSignIn(box?.value ?? "");
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-user-pick]").forEach((btn) => {
+    btn.addEventListener("click", () => handlers.onSignIn(btn.dataset.userPick ?? ""));
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-shop-buy]").forEach((btn) => {
+    btn.addEventListener("click", () => handlers.onBuyShop(btn.dataset.shopBuy ?? ""));
+  });
   root.querySelector("[data-best-mode]")?.addEventListener("click", handlers.onBestMode);
   root.querySelectorAll<HTMLButtonElement>("[data-sheet-open]").forEach((btn) => {
     btn.addEventListener("click", () => handlers.onOpenSheet(btn.dataset.sheetOpen as MoreSheet));
@@ -820,7 +923,7 @@ function patchOutsideRows(root: HTMLElement, state: GameState, buyMode: BuyMode,
     if (!el) return;
     el.classList.toggle("is-on", selected === index);
     const vps = rowVps(state, index);
-    const cycle = effectiveCycleSec(def.cycleSec, row.owned);
+    const cycle = cycleSecFor(def.cycleSec, row.owned, state.shop?.tempo ?? 0);
     const next = nextMilestone(row.owned);
     const eta = timeToRankSec(state, index);
     const badge = advice.badges[index];
@@ -853,7 +956,7 @@ function patchInside(root: HTMLElement, state: GameState, selected: number): voi
   const payout = root.querySelector(".bar span");
   if (payout) {
     payout.textContent =
-      row.owned > 0 ? `${formatNum(cycleIncome(state.planet, selected, row.owned, state.prestigeMult))} views` : "—";
+      row.owned > 0 ? `${formatNum(cycleIncome(state.planet, selected, row.owned, totalMult(state)))} views` : "—";
   }
   const hint = root.querySelector(".run-copy small");
   if (hint) {
@@ -872,7 +975,7 @@ function patchInside(root: HTMLElement, state: GameState, selected: number): voi
   const milestone = nextMilestone(row.owned);
   if (meta[0]) meta[0].textContent = milestone ? `Next rank at ${milestone}` : "Milestones maxed";
   if (meta[1]) {
-    meta[1].textContent = `${row.owned > 0 ? formatCycle(effectiveCycleSec(def.cycleSec, row.owned)) : formatCycle(def.cycleSec)} cycle`;
+    meta[1].textContent = `${row.owned > 0 ? formatCycle(cycleSecFor(def.cycleSec, row.owned, state.shop?.tempo ?? 0)) : formatCycle(def.cycleSec)} cycle`;
   }
 }
 
@@ -888,8 +991,9 @@ function patchManagers(root: HTMLElement, state: GameState): void {
       btn.textContent = "Managed";
       return;
     }
-    btn.disabled = row.owned <= 0 || state.views < def.managerCost;
-    btn.textContent = `Hire · ${formatNum(def.managerCost)}`;
+    const cost = managerPrice(state, planet, index);
+    btn.disabled = row.owned <= 0 || state.views < cost;
+    btn.textContent = `Hire · ${formatNum(cost)}`;
   });
 }
 
@@ -943,7 +1047,9 @@ export function patchMeters(
   const algo = root.querySelector("#algo");
   if (views) views.textContent = formatNum(state.views);
   if (vps) vps.textContent = `${formatNum(globalViewsPerSec(state, clock))}/s`;
-  if (mult) mult.textContent = `Viral ${state.prestigeMult.toFixed(2)}x`;
+  if (mult) mult.textContent = `Viral ${totalMult(state).toFixed(2)}x`;
+  const hype = root.querySelector("#hype");
+  if (hype) hype.textContent = `Hype ${formatNum(state.hype)}`;
   if (algo) algo.textContent = `Algo ${state.algoMult.toFixed(2)}x`;
   patchGoal(root, state);
 
@@ -969,7 +1075,7 @@ export function patchMeters(
     dockBuy.textContent = buyButtonText(quote, buyMode, def.name);
   }
   if (def && row && dockMgr && !row.manager) {
-    dockMgr.disabled = row.owned <= 0 || state.views < def.managerCost;
+    dockMgr.disabled = row.owned <= 0 || state.views < managerPrice(state, state.planet, view.selected);
   }
 }
 
