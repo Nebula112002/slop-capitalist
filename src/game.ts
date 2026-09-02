@@ -737,8 +737,8 @@ export function prestigeGain(runViews: number, prestigeCount = 0): number {
 }
 
 export function nextPlanetName(state: GameState): string {
-  if (!state.tiktokUnlocked) return "TikTok";
-  if (!state.simulationUnlocked) return "The Simulation";
+  if (!state.tiktokUnlocked) return PLANETS[1].name;
+  if (!state.simulationUnlocked) return PLANETS[2].name;
   return PLANETS.find((planet) => planet.id === state.planet)?.name ?? "the farm";
 }
 

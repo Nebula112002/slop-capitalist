@@ -55,6 +55,7 @@ import {
 } from "./ui";
 import {
   claimLegacySave,
+  clearAllLocalData,
   clearUserSave,
   isValidUsername,
   normalizeUsername,
@@ -313,6 +314,24 @@ const handlers: UiHandlers = {
     if (!currentUser) return;
     if (!window.confirm("Wipe this save? The algorithm forgets you.")) return;
     wipeCurrentUser();
+  },
+  onEraseAll() {
+    const ok = window.confirm(
+      "Delete every save on this browser, for every player name? This cannot be undone.",
+    );
+    if (!ok) return;
+    const removed = clearAllLocalData(store);
+    users = readUserIndex(store);
+    currentUser = "";
+    state = newGame();
+    buyMode = 1;
+    taps = newTapSession();
+    resetFlavorSession();
+    pendingAway = { earned: 0, offlineMs: 0 };
+    view = landingView(state, buyMode);
+    sheet = null;
+    rebuild();
+    showToast(`Deleted ${removed.length} stored item${removed.length === 1 ? "" : "s"}. Nothing left.`);
   },
   onOpenSheet(next: MoreSheet) {
     sheet = next;

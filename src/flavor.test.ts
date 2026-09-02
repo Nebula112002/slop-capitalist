@@ -27,8 +27,8 @@ describe("flavor picker", () => {
 
   it("banks Hype on prestige instead of a fake +Nx viral toast", () => {
     resetFlavorSession();
-    const line = pickFlavor("prestige", { gain: "10.0", name: "TikTok" }, () => 0);
-    expect(line).toContain("TikTok");
+    const line = pickFlavor("prestige", { gain: "10.0", name: "The Feed" }, () => 0);
+    expect(line).toContain("The Feed");
     expect(line).toContain("10.0");
     expect(line).toContain("Hype");
     expect(line).not.toMatch(/\+10\.0x/);

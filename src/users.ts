@@ -95,3 +95,18 @@ export function writeUserSave(username: string, raw: string, storage: Storage): 
 export function clearUserSave(username: string, storage: Storage): void {
   storage.removeItem(saveKeyFor(username));
 }
+
+/**
+ * Erasure, for real: every save, every player name, and the remembered screen.
+ * Prefix-scanned rather than key-by-key so a save from an older build cannot
+ * survive a player asking for their data to be deleted.
+ */
+export function clearAllLocalData(storage: Storage): string[] {
+  const doomed: string[] = [];
+  for (let i = 0; i < storage.length; i++) {
+    const key = storage.key(i);
+    if (key && key.startsWith("slop-capitalist")) doomed.push(key);
+  }
+  for (const key of doomed) storage.removeItem(key);
+  return doomed;
+}

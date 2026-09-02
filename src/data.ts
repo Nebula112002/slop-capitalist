@@ -66,18 +66,27 @@ export type PassTier = {
 
 export const PLANET_IDS: PlanetId[] = ["youtube", "tiktok", "simulation"];
 
+/**
+ * The ids are frozen: they are written into every save as `state.planet` and
+ * used as the keys of `state.businesses`. Renaming one wipes people. Player
+ * facing names live in `name` and are safe to change.
+ *
+ * The names are deliberately generic. This is a parody of algorithmic video
+ * platforms, not a licensed product, so no real platform's trademark ships in
+ * the build. See docs/LEGAL-NOTES.md.
+ */
 export const PLANETS: PlanetDef[] = [
   {
     id: "youtube",
-    name: "YouTube",
+    name: "The Tube",
     tag: "Planet 1",
     unlock: "Start here. One cursed short.",
   },
   {
     id: "tiktok",
-    name: "TikTok",
+    name: "The Feed",
     tag: "Planet 2",
-    unlock: "Prestige once to unlock the For You page.",
+    unlock: "Prestige once to unlock vertical video.",
   },
   {
     id: "simulation",
@@ -165,7 +174,7 @@ export const BUSINESSES: Record<PlanetId, BusinessDef[]> = {
     },
     {
       id: "duet-chain",
-      name: "Duet Chain",
+      name: "Mirror Chain",
       blurb: "React, then react to the reaction. Infinite hallway.",
       icon: "🎭",
       baseCost: 15_000_000,
@@ -201,7 +210,7 @@ export const BUSINESSES: Record<PlanetId, BusinessDef[]> = {
     },
     {
       id: "fyp",
-      name: "You Are The FYP",
+      name: "You Are The Feed",
       blurb: "The page is you. The you is the page.",
       icon: "✨",
       baseCost: 26_000_000_000,
@@ -289,10 +298,10 @@ export const EVENTS: EventDef[] = [
   },
   {
     id: "duet-storm",
-    name: "Duet Storm",
+    name: "Mirror Storm",
     blurb: "Everyone is reacting to everyone. Including the bots.",
     bonusMult: 1.75,
-    extraName: "Mirror Duet",
+    extraName: "Mirror Loop",
     extraIncome: 80,
     extraCycleSec: 3,
     dropViews: 8_000,
@@ -319,7 +328,7 @@ export const PASS_TIERS: PassTier[] = [
   { id: "intern", at: 10_000, name: "Intern Badge", kind: "title", title: "Thumbnail Intern" },
   { id: "gremlin", at: 100_000, name: "Gremlin Snack", kind: "views", amount: 2_000 },
   { id: "scheduler", at: 1_000_000, name: "Scheduler Pip", kind: "mult", amount: 0.05 },
-  { id: "fyp", at: 10_000_000, name: "FYP Stamp", kind: "title", title: "For You Farmer" },
+  { id: "fyp", at: 10_000_000, name: "Feed Stamp", kind: "title", title: "Feed Farmer" },
   { id: "swarm", at: 100_000_000, name: "Swarm Bonus", kind: "views", amount: 2_000_000 },
   { id: "sim", at: 1_000_000_000, name: "Sim Resident", kind: "mult", amount: 0.1 },
   { id: "infinity", at: 10_000_000_000, name: "Infinity Intern", kind: "title", title: "Infinity Intern" },
@@ -375,7 +384,7 @@ export const HYPE_SHOP: HypeShopItem[] = [
   {
     id: "offline",
     name: "Night Shift",
-    blurb: "+2 hours offline cap per rank (8h → 24h at max).",
+    blurb: "+2 hours offline cap per rank, 8h up to 24h at max.",
     max: 8,
     baseCost: 12,
     costMult: 2,

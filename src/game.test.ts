@@ -327,7 +327,7 @@ describe("offline + prestige", () => {
     expect(state.viewsThisRun).toBe(earned);
   });
 
-  it("unlocks TikTok with a starter clip and re-locks prestige", () => {
+  it("unlocks the second planet with a starter clip and re-locks prestige", () => {
     const state = newGame();
     expect(canPrestige(state)).toBe(false);
     state.lifetimeViews = PRESTIGE_AT;

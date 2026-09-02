@@ -54,7 +54,8 @@ export type MoreSheet =
   | "pass"
   | "settings"
   | "recap"
-  | "chest";
+  | "chest"
+  | "legal";
 
 export type UiView = {
   screen: "landing" | "outside" | "inside";
@@ -109,6 +110,7 @@ export type UiHandlers = {
   onDismissTip: () => void;
   onOverflow: () => void;
   onReset: () => void;
+  onEraseAll: () => void;
 };
 
 const BUY_CHIPS: BuyMode[] = [1, 10, 100, "max", "rank"];
@@ -178,8 +180,8 @@ function chipTitle(mode: BuyMode): string {
 }
 
 function planetShort(id: PlanetId): string {
-  if (id === "youtube") return "YT";
-  if (id === "tiktok") return "TT";
+  if (id === "youtube") return "TUBE";
+  if (id === "tiktok") return "FEED";
   return "SIM";
 }
 
@@ -477,7 +479,7 @@ function renderOutside(state: GameState, buyMode: BuyMode, selected: number): st
     ${
       state.pendingChest
         ? `<button class="strip strip-gold" data-sheet-open="chest">
-            <span class="strip-icon" aria-hidden="true">\u25c9</span>
+            <span class="strip-icon" aria-hidden="true">\u2022</span>
             <span class="strip-copy"><strong>Comeback chest</strong><small>+${formatNum(state.pendingChest.views)} views waiting</small></span>
             <span class="strip-go">Open</span>
           </button>`
@@ -741,7 +743,7 @@ function sheetShell(opts: SheetOpts): string {
             <strong id="${id}">${opts.title}</strong>
             ${opts.sub ? `<p>${opts.sub}</p>` : ""}
           </div>
-          <button class="sheet-x" data-sheet-close aria-label="Close">\u2715</button>
+          <button class="sheet-x" data-sheet-close aria-label="Close">\u00d7</button>
         </div>
         <div class="sheet-body">${opts.body}</div>
       </div>
@@ -802,11 +804,92 @@ function renderMenu(state: GameState, now: number): string {
     ),
     menuRow('data-sheet-open="recap"', "Stats", "Lifetime views, viral, Hype, playtime", ""),
     menuRow('data-sheet-open="settings"', "Settings", "Chest, sound, export, import, reset", ""),
+    menuRow('data-sheet-open="legal"', "Privacy & legal", "What is stored, and how to delete it", ""),
   ]
     .filter(Boolean)
     .join("");
   return `<div class="menu-list">${rows}</div>
     <p class="sheet-note">Nothing in here costs money. There is no checkout.</p>`;
+}
+
+/**
+ * Says exactly what the game does with data, in the app rather than only in a
+ * markdown file. Keep it factual: the strong position here is that there is
+ * nothing to collect, not that a policy permits collecting it.
+ */
+function renderLegal(state: GameState): string {
+  return `
+    <section class="list-block">
+      <h3>What is stored</h3>
+      <article class="list-row">
+        <span class="list-copy">
+          <strong>Your progress and your player name</strong>
+          <small>Views, farms, managers, Hype, upgrades, and which screen you were last on. Kept in this browser's local storage on this device.</small>
+        </span>
+      </article>
+      <article class="list-row">
+        <span class="list-copy">
+          <strong>Nothing else, and nowhere else</strong>
+          <small>No account, no password, no email, no server, no analytics, no advertising, no tracking, no cookies for tracking, no third-party requests. The fonts ship with the game.</small>
+        </span>
+      </article>
+      <article class="list-row">
+        <span class="list-copy">
+          <strong>Nothing is for sale</strong>
+          <small>No purchases, no currency you can buy, no ads, no checkout. Hype is earned by playing.</small>
+        </span>
+      </article>
+    </section>
+    <section class="list-block">
+      <h3>Your data, your call</h3>
+      <article class="list-row">
+        <span class="list-copy">
+          <strong>Take it with you</strong>
+          <small>Copy export in settings hands you the whole save as JSON.</small>
+        </span>
+        <button class="pill" data-export>Export</button>
+      </article>
+      <article class="list-row">
+        <span class="list-copy">
+          <strong>Delete everything</strong>
+          <small>Erases every save on this browser, every player name, and the saved screen. Immediate and unrecoverable.</small>
+        </span>
+        <button class="pill pill-danger" data-erase-all>Delete all</button>
+      </article>
+    </section>
+    <section class="list-block">
+      <h3>Notices</h3>
+      <article class="list-row">
+        <span class="list-copy">
+          <strong>Parody, not a licensed product</strong>
+          <small>A joke about algorithmic video platforms in general. It is not affiliated with, endorsed by, or connected to any real platform or company, and no real brand is used in the game.</small>
+        </span>
+      </article>
+      <article class="list-row">
+        <span class="list-copy">
+          <strong>Fonts</strong>
+          <small>IBM Plex Sans and IBM Plex Mono &copy; IBM Corp. Bebas Neue &copy; Dharma Type. Both under the SIL Open Font License 1.1, bundled at /fonts/.</small>
+        </span>
+      </article>
+      <article class="list-row">
+        <span class="list-copy">
+          <strong>The game itself</strong>
+          <small>MIT licensed. Provided as is, with no warranty of any kind. It is a toy: do not rely on it for anything.</small>
+        </span>
+      </article>
+      ${
+        state.muted
+          ? ""
+          : `<article class="list-row">
+              <span class="list-copy">
+                <strong>Sound</strong>
+                <small>Short generated tones only. No microphone, no camera, no recording. Mute lives in settings.</small>
+              </span>
+            </article>`
+      }
+    </section>
+    <p class="sheet-note">Full text: docs/PRIVACY.md, docs/TERMS.md and docs/THIRD-PARTY.md in the repository.</p>
+  `;
 }
 
 function renderSheet(state: GameState, sheet: UiSheet, now: number): string {
@@ -934,9 +1017,19 @@ function renderSheet(state: GameState, sheet: UiSheet, now: number): string {
           <button class="pill pill-wide" data-mute>${state.muted ? "Unmute juice" : "Mute juice"}</button>
           <button class="pill pill-wide" data-export>Copy export</button>
           <button class="pill pill-wide" data-import-ask>Import save</button>
-          <button class="pill pill-wide pill-danger" data-reset>Reset save</button>
+          <button class="pill pill-wide" data-sheet-open="legal">Privacy &amp; legal</button>
+          <button class="pill pill-wide pill-danger" data-reset>Reset this save</button>
         </div>
       `,
+    });
+  }
+  if (sheet === "legal") {
+    return sheetShell({
+      key: "legal",
+      title: "Privacy & legal",
+      sub: "Local game, local save, nothing sold, nothing sent.",
+      tall: true,
+      body: renderLegal(state),
     });
   }
   if (sheet === "managers") {
@@ -1082,7 +1175,8 @@ function renderLanding(state: GameState, session: UiSession): string {
             : ""
         }
         <footer class="pitch-foot">
-          <p>Saves live in this browser. No ads, no passes, no checkout. It runs on one PC and that is the whole plan.</p>
+          <p>Saves live in this browser. No account, no ads, no checkout, nothing sent anywhere. It runs on one PC and that is the whole plan.</p>
+          <button type="button" class="link" data-sheet-open="legal">Privacy &amp; legal</button>
         </footer>
         <div id="toast-slot" class="toast-slot is-static" role="status" aria-live="polite"></div>
       </main>
@@ -1296,6 +1390,7 @@ function bindChrome(root: HTMLElement, view: UiView, handlers: UiHandlers): void
   });
   root.querySelector("[data-overflow]")?.addEventListener("click", handlers.onOverflow);
   root.querySelector("[data-reset]")?.addEventListener("click", handlers.onReset);
+  root.querySelector("[data-erase-all]")?.addEventListener("click", handlers.onEraseAll);
   root.querySelector("[data-farm]")?.addEventListener("click", handlers.onFarm);
   root.querySelector("[data-buy-best]")?.addEventListener("click", handlers.onBuyBest);
   root.querySelector("[data-dock-buy]")?.addEventListener("click", () => handlers.onBuy(view.selected));

@@ -56,6 +56,7 @@ const noop: UiHandlers = {
   onDismissTip() {},
   onOverflow() {},
   onReset() {},
+  onEraseAll() {},
 };
 
 const MODES: BuyMode[] = [1, 10, 100, "max", "rank"];
@@ -157,7 +158,7 @@ describe("farm chrome", () => {
     expect(root.querySelector("#mult")).toBeTruthy();
     expect(root.querySelector("#algo")).toBeNull();
     expect(root.querySelector("#hype")).toBeNull();
-    expect(root.textContent).not.toContain("Unlock TikTok");
+    expect(root.textContent).not.toContain("Unlock The Feed");
     expect(root.querySelector("[data-prestige]")).toBeTruthy();
     expect(root.querySelector("[data-overflow]")?.getAttribute("aria-label")).toBe("Menu");
   });
