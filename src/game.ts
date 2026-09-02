@@ -456,7 +456,7 @@ export function tick(state: GameState, dtSec: number, session?: TapSession, now 
     for (let i = 0; i < defs.length; i++) {
       const row = rows[i];
       if (row.owned <= 0) continue;
-      if (row.manager) row.running = true;
+      if (row.manager || !row.running) row.running = true;
       if (!row.running) continue;
       const cycle = effectiveCycleSec(defs[i].cycleSec, row.owned);
       row.progress += dtSec / cycle;

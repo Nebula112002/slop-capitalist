@@ -187,6 +187,13 @@ describe("loop", () => {
     expect(state.businesses.youtube[0].running).toBe(false);
   });
 
+  it("auto-starts owned bars so the farm screen can progress without a tap", () => {
+    const state = newGame();
+    expect(state.businesses.youtube[0].running).toBe(false);
+    tick(state, 0.61);
+    expect(state.views).toBeGreaterThan(0);
+  });
+
   it("managers keep running", () => {
     const state = newGame();
     state.views = 10_000;
