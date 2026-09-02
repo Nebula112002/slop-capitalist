@@ -12,19 +12,20 @@ const notes = [];
 try {
   const land = await page.locator("body").innerText();
   notes.push(`first paint: ${land.includes("Continue") && land.includes("New run") ? "landing" : "NOT landing"}`);
-  notes.push(`landing bullets: BEST=${land.includes("Buy BEST")} farm=${land.includes("farm is the game")} prestige=${land.includes("Prestige when the chip fills")}`);
+  notes.push(`landing bullets: buy=${land.includes("Tap a farm")} farm=${land.includes("farm is the game")} prestige=${land.includes("Prestige when the chip fills")}`);
   notes.push(`dumped into farm: ${land.includes("YouTube farm")}`);
   await page.screenshot({ path: "docs/playtest-landing.png", fullPage: true });
 
   await page.getByRole("button", { name: /^Continue/ }).click();
-  await page.waitForSelector("[data-buy-best], [data-dismiss-tip]");
+  await page.waitForSelector("[data-dock-buy], [data-buy-best], [data-dismiss-tip]");
   const farm = await page.locator("body").innerText();
   notes.push(`after Continue: ${farm.includes("YouTube farm") ? "YouTube farm" : "NOT farm"}`);
-  notes.push(`Buy BEST visible: ${farm.includes("Buy BEST")}`);
+  notes.push(`default mint is selected row: ${farm.includes("Cursed Short") && !farm.includes("Buy BEST")}`);
+  notes.push(`BEST chip present: ${farm.includes("BEST")}`);
   notes.push(`prestige card on farm: ${farm.includes("Unlock The Simulation")}`);
   notes.push(`header BEST repeat: ${/Best:\s+\d/.test(farm)}`);
   notes.push(`Algo on fresh farm: ${/\bAlgo\b/.test(farm) && farm.includes("Algo 1.00")}`);
-  notes.push(`qty chips closed: ${farm.includes("RANK") && farm.includes("MAX") ? "OPEN (bad)" : "hidden"}`);
+  notes.push(`qty chips visible: ${farm.includes("RANK") && farm.includes("MAX") ? "yes" : "hidden"}`);
   notes.push(`SIM chip: ${farm.includes("SIM")}`);
 
   if (farm.includes("Got it")) {
@@ -36,23 +37,28 @@ try {
   const rows = await page.locator("[data-row]").count();
   notes.push(`farm rows visible: ${rows}`);
 
-  const best = page.locator("[data-buy-best]");
-  if (await best.count()) {
-    const label = await best.innerText();
+  const rowBuy = page.locator("[data-dock-buy]");
+  if (await rowBuy.count()) {
+    const label = await rowBuy.innerText();
     notes.push(`dock: ${label.replace(/\s+/g, " ").trim()}`);
-    if (!(await best.isDisabled())) {
-      await best.click();
-      notes.push("clicked Buy BEST");
+    if (!(await rowBuy.isDisabled())) {
+      await rowBuy.click();
+      notes.push("clicked selected-row buy");
     } else {
-      notes.push("Buy BEST disabled at fresh start (waiting for first views)");
+      notes.push("selected buy disabled at fresh start (waiting for first views)");
       await page.waitForTimeout(1500);
-      const later = await best.innerText();
-      notes.push(`after 1.5s: ${later.replace(/\s+/g, " ").trim()} disabled=${await best.isDisabled()}`);
-      if (!(await best.isDisabled())) {
-        await best.click();
-        notes.push("clicked Buy BEST after wait");
+      const later = await rowBuy.innerText();
+      notes.push(`after 1.5s: ${later.replace(/\s+/g, " ").trim()} disabled=${await rowBuy.isDisabled()}`);
+      if (!(await rowBuy.isDisabled())) {
+        await rowBuy.click();
+        notes.push("clicked selected-row buy after wait");
       }
     }
+  }
+  await page.locator("[data-best-mode]").click();
+  const best = page.locator("[data-buy-best]");
+  if (await best.count()) {
+    notes.push(`BEST mode dock: ${(await best.innerText()).replace(/\s+/g, " ").trim()}`);
   }
 
   const stillFarm = await page.locator("[data-row]").count();
@@ -84,7 +90,7 @@ try {
   notes.push(`save wiped on home: ${home.includes("Continue ·") ? "kept views" : "fresh or no views yet"}`);
 
   await page.getByRole("button", { name: /^Continue/ }).click();
-  await page.waitForSelector("[data-buy-best]");
+  await page.waitForSelector("[data-dock-buy], [data-buy-best]");
   notes.push(`continue again: ${(await page.locator("[data-row]").count()) > 0 ? "farm" : "MISSING farm"}`);
 
   await page.locator("[data-overflow]").click();

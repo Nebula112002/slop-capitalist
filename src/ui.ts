@@ -42,7 +42,7 @@ export type DockTab = MoreSheet | "buy";
 export type UiView = {
   screen: "landing" | "outside" | "inside";
   selected: number;
-  qtyOpen: boolean;
+  bestMode: boolean;
 };
 
 export type UiSheet =
@@ -74,7 +74,7 @@ export type UiHandlers = {
   onEnter: (index: number) => void;
   onFarm: () => void;
   onOpenSheet: (sheet: MoreSheet) => void;
-  onQtyToggle: () => void;
+  onBestMode: () => void;
   onHome: () => void;
   onContinue: () => void;
   onNewRun: () => void;
@@ -161,7 +161,8 @@ export function buyButtonText(quote: BuyQuote, mode: BuyMode, name?: string): st
     }
     return `Rank ${quote.gap}${who} · ${cost}`;
   }
-  return `Buy ${quote.count}${who} · ${cost}`;
+  if (name) return `Buy ${quote.count}× ${name} · ${cost}`;
+  return `Buy ${quote.count} · ${cost}`;
 }
 
 export function bestButtonText(state: GameState, mode: BuyMode, advice: FarmAdvice): string {
@@ -186,14 +187,16 @@ function renderPlanetChips(state: GameState): string {
   }).join("");
 }
 
-function renderBuyChips(buyMode: BuyMode): string {
-  return BUY_CHIPS.map(
+function renderBuyChips(buyMode: BuyMode, bestMode: boolean): string {
+  const qty = BUY_CHIPS.map(
     (mode) => `
-      <button class="chip ${buyMode === mode ? "is-on" : ""}" data-buymode="${mode}">
+      <button class="chip ${!bestMode && buyMode === mode ? "is-on" : ""}" data-buymode="${mode}">
         ${chipLabel(mode)}
       </button>
     `,
   ).join("");
+  return `${qty}
+      <button class="chip ${bestMode ? "is-on" : ""}" data-best-mode>BEST</button>`;
 }
 
 function dropHot(state: GameState, now: number): boolean {
@@ -209,8 +212,14 @@ function mgrsHot(state: GameState): boolean {
   return managerSlots(state).some((slot) => slot.affordable);
 }
 
-function renderDockActions(state: GameState, buyMode: BuyMode, selected: number, screen: UiView["screen"]): string {
-  if (screen === "outside") {
+function renderDockActions(
+  state: GameState,
+  buyMode: BuyMode,
+  selected: number,
+  screen: UiView["screen"],
+  bestMode: boolean,
+): string {
+  if (bestMode) {
     const advice = adviseFarm(state, buyMode);
     return `
       <button class="buy" data-buy-best ${advice.bestIndex !== null ? "" : "disabled"}>
@@ -222,14 +231,18 @@ function renderDockActions(state: GameState, buyMode: BuyMode, selected: number,
   const row = state.businesses[state.planet][selected];
   if (!def || !row) return "";
   const quote = quotedBuy(state, selected, buyMode);
-  const hireDisabled = row.manager || row.owned <= 0 || state.views < def.managerCost;
+  const hire =
+    screen === "inside"
+      ? `
+    <button class="mgr" data-dock-mgr ${row.manager || row.owned <= 0 || state.views < def.managerCost ? "disabled" : ""}>
+      ${row.manager ? "Managed" : `${def.managerName} · ${formatNum(def.managerCost)}`}
+    </button>`
+      : "";
   return `
     <button class="buy" data-dock-buy ${quote.canBuy ? "" : "disabled"}>
-      ${buyButtonText(quote, buyMode)}
+      ${buyButtonText(quote, buyMode, def.name)}
     </button>
-    <button class="mgr" data-dock-mgr ${hireDisabled ? "disabled" : ""}>
-      ${row.manager ? "Managed" : `${def.managerName} · ${formatNum(def.managerCost)}`}
-    </button>
+    ${hire}
   `;
 }
 
@@ -616,7 +629,7 @@ function renderLanding(state: GameState): string {
         <p class="wordmark">Slop Capitalist</p>
         <p class="landing-tag">Idle tycoon. Farm the algorithm. One cursed short at a time.</p>
         <ul class="landing-bullets">
-          <li><strong>Tap Buy BEST.</strong> It already picked the right row. The math does not lie.</li>
+          <li><strong>Tap a farm, then buy it.</strong> BEST is a mode if you want the math to pick.</li>
           <li><strong>The farm is the game.</strong> Hire, drops, and the pass open as sheets — they never replace the list.</li>
           <li><strong>Prestige when the chip fills.</strong> Reset every farm. Keep the multiplier.</li>
         </ul>
@@ -693,28 +706,23 @@ export function renderApp(
         state.seenTooltip
           ? ""
           : `<div class="tip" data-tip>
-              <strong>Buy BEST is the loop.</strong>
-              <p>It spends on the real best row. Open a card only for flavor. Hire, drops, and the pass sit behind the icons.</p>
+              <strong>Tap a row. The mint button follows it.</strong>
+              <p>Quantity is 1 / 10 / 100 / MAX / RANK. BEST is a mode that spends on the advisor winner instead.</p>
               <button class="ghost" data-dismiss-tip>Got it</button>
             </div>`
       }</main>
       <footer class="chrome-bot">
         <div id="toast-slot" class="toast-slot" role="status"></div>
-        ${
-          view.qtyOpen
-            ? `<div class="dock-modes">
-                ${renderBuyChips(buyMode)}
-              </div>`
-            : ""
-        }
+        <div class="dock-modes">
+          ${renderBuyChips(buyMode, view.bestMode)}
+        </div>
         <nav class="dock-icons" aria-label="More">
-          <button class="dock-icon ${view.qtyOpen ? "is-on" : ""}" data-qty-toggle aria-label="Buy quantity">${chipLabel(buyMode)}</button>
           <button class="dock-icon ${mgrsHot(state) ? "is-hot" : ""}" data-sheet-open="managers">Mgrs</button>
           <button class="dock-icon ${dropHot(state, clock) ? "is-hot" : ""}" data-sheet-open="event">Drop</button>
           <button class="dock-icon ${passHot(state) ? "is-hot" : ""}" data-sheet-open="pass">Pass</button>
         </nav>
         <div class="dock-actions" id="dock-actions">
-          ${renderDockActions(state, buyMode, view.selected, view.screen)}
+          ${renderDockActions(state, buyMode, view.selected, view.screen, view.bestMode)}
         </div>
       </footer>
       ${renderSheet(state, sheet, clock)}
@@ -728,7 +736,7 @@ function bindChrome(root: HTMLElement, view: UiView, handlers: UiHandlers): void
   root.querySelector("[data-home]")?.addEventListener("click", handlers.onHome);
   root.querySelector("[data-continue]")?.addEventListener("click", handlers.onContinue);
   root.querySelector("[data-new-run]")?.addEventListener("click", handlers.onNewRun);
-  root.querySelector("[data-qty-toggle]")?.addEventListener("click", handlers.onQtyToggle);
+  root.querySelector("[data-best-mode]")?.addEventListener("click", handlers.onBestMode);
   root.querySelectorAll<HTMLButtonElement>("[data-sheet-open]").forEach((btn) => {
     btn.addEventListener("click", () => handlers.onOpenSheet(btn.dataset.sheetOpen as MoreSheet));
   });
@@ -950,7 +958,7 @@ export function patchMeters(
   const bestBtn = root.querySelector<HTMLButtonElement>("[data-buy-best]");
   const def = BUSINESSES[state.planet][view.selected];
   const row = state.businesses[state.planet][view.selected];
-  if (bestBtn && view.screen === "outside") {
+  if (bestBtn) {
     const advice = adviseFarm(state, buyMode);
     bestBtn.disabled = advice.bestIndex === null;
     bestBtn.textContent = bestButtonText(state, buyMode, advice);
@@ -958,7 +966,7 @@ export function patchMeters(
   if (def && row && dockBuy) {
     const quote = quotedBuy(state, view.selected, buyMode);
     dockBuy.disabled = !quote.canBuy;
-    dockBuy.textContent = buyButtonText(quote, buyMode);
+    dockBuy.textContent = buyButtonText(quote, buyMode, def.name);
   }
   if (def && row && dockMgr && !row.manager) {
     dockMgr.disabled = row.owned <= 0 || state.views < def.managerCost;

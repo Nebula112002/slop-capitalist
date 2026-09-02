@@ -66,12 +66,12 @@ offerComebackChest(state, away.earned, away.offlineMs);
 if (view.screen !== "landing" && state.pendingChest) sheet = "chest";
 persist(state);
 
-function homeView(game: GameState, mode: BuyMode, qtyOpen = false): UiView {
-  return { screen: "outside", selected: defaultSelected(game, mode), qtyOpen };
+function homeView(game: GameState, mode: BuyMode, bestMode = false): UiView {
+  return { screen: "outside", selected: defaultSelected(game, mode), bestMode };
 }
 
 function landingView(game: GameState, mode: BuyMode): UiView {
-  return { screen: "landing", selected: defaultSelected(game, mode), qtyOpen: false };
+  return { screen: "landing", selected: defaultSelected(game, mode), bestMode: false };
 }
 
 function bootView(game: GameState, mode: BuyMode): UiView {
@@ -149,7 +149,7 @@ const handlers: UiHandlers = {
       return;
     }
     if (setPlanet(state, planet)) {
-      view = { screen: "outside", selected: defaultSelected(state, buyMode), qtyOpen: view.qtyOpen };
+      view = { screen: "outside", selected: defaultSelected(state, buyMode), bestMode: view.bestMode };
       rebuild();
     }
   },
@@ -163,7 +163,7 @@ const handlers: UiHandlers = {
     sheet = null;
     taps = newTapSession();
     if (gain > 0) {
-      view = homeView(state, buyMode, view.qtyOpen);
+      view = homeView(state, buyMode, view.bestMode);
       persist(state);
       rebuild();
       playJuice("prestige", state.muted);
@@ -182,7 +182,7 @@ const handlers: UiHandlers = {
     sheet = null;
     taps = newTapSession();
     if (gain > 0) {
-      view = homeView(state, buyMode, view.qtyOpen);
+      view = homeView(state, buyMode, view.bestMode);
       persist(state);
       rebuild();
       playJuice("prestige", state.muted);
@@ -197,9 +197,11 @@ const handlers: UiHandlers = {
   },
   onBuyMode(mode) {
     buyMode = mode;
-    if (view.screen === "outside") {
-      view = { ...view, selected: defaultSelected(state, buyMode) };
-    }
+    view = { ...view, bestMode: false };
+    rebuild();
+  },
+  onBestMode() {
+    view = { ...view, bestMode: !view.bestMode };
     rebuild();
   },
   onSelect(index) {
@@ -235,10 +237,6 @@ const handlers: UiHandlers = {
     sheet = next;
     rebuild();
   },
-  onQtyToggle() {
-    view = { ...view, qtyOpen: !view.qtyOpen };
-    rebuild();
-  },
   onHome() {
     persistUiRoute("landing");
     view = landingView(state, buyMode);
@@ -247,7 +245,7 @@ const handlers: UiHandlers = {
   },
   onContinue() {
     persistUiRoute("farm");
-    view = homeView(state, buyMode, view.qtyOpen);
+    view = homeView(state, buyMode, view.bestMode);
     sheet = state.pendingChest ? "chest" : null;
     rebuild();
   },
@@ -328,7 +326,7 @@ const handlers: UiHandlers = {
     state = loaded;
     taps = newTapSession();
     persistUiRoute("farm");
-    view = homeView(state, buyMode, view.qtyOpen);
+    view = homeView(state, buyMode, view.bestMode);
     sheet = state.pendingChest ? "chest" : null;
     persist(state);
     rebuild();
