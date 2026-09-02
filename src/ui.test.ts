@@ -15,9 +15,9 @@ import {
 } from "./ui";
 import { adviseFarm } from "./game";
 
-const farm: UiView = { screen: "outside", selected: 0, qtyOpen: false };
-const inside: UiView = { screen: "inside", selected: 0, qtyOpen: false };
-const landing: UiView = { screen: "landing", selected: 0, qtyOpen: false };
+const farm: UiView = { screen: "outside", selected: 0, bestMode: false };
+const inside: UiView = { screen: "inside", selected: 0, bestMode: false };
+const landing: UiView = { screen: "landing", selected: 0, bestMode: false };
 
 const noop: UiHandlers = {
   onBuyBest() {},
@@ -36,7 +36,7 @@ const noop: UiHandlers = {
   onEnter() {},
   onFarm() {},
   onOpenSheet() {},
-  onQtyToggle() {},
+  onBestMode() {},
   onHome() {},
   onContinue() {},
   onNewRun() {},
@@ -60,7 +60,7 @@ describe("landing + route memory", () => {
     renderApp(root, newGame(), 1, landing, null, noop);
     expect(root.textContent).toContain("Continue");
     expect(root.textContent).toContain("New run");
-    expect(root.textContent).toContain("Tap Buy BEST");
+    expect(root.textContent).toContain("Tap a farm, then buy it");
     expect(root.textContent).toContain("The farm is the game");
     expect(root.textContent).toContain("Prestige when the chip fills");
     expect(root.querySelector("[data-row]")).toBeNull();
@@ -119,11 +119,11 @@ describe("chrome + views", () => {
     expect(root.textContent).toContain("Mgrs");
     expect(root.textContent).toContain("Drop");
     expect(root.textContent).toContain("Pass");
-    expect(root.querySelector("[data-qty-toggle]")).toBeTruthy();
-    expect(root.querySelectorAll("[data-buymode]").length).toBe(0);
+    expect(root.querySelector("[data-best-mode]")).toBeTruthy();
+    expect(root.querySelectorAll("[data-buymode]").length).toBe(5);
   });
 
-  it("shows BEST on the row and Buy BEST, not a header repeat", () => {
+  it("shows BEST on the row, not as a header repeat or default mint button", () => {
     const root = document.createElement("div");
     const state = newGame();
     state.views = 80;
@@ -131,8 +131,9 @@ describe("chrome + views", () => {
     expect(root.textContent).toContain("BEST");
     expect(root.textContent).toContain("LOCK");
     expect(root.querySelector("[data-row='0']")?.classList.contains("is-on")).toBe(true);
-    expect(root.querySelector("[data-buy-best]")).toBeTruthy();
-    expect(root.textContent).toContain("Buy BEST");
+    expect(root.querySelector("[data-buy-best]")).toBeNull();
+    expect(root.querySelector("[data-dock-buy]")?.textContent).toContain("Cursed Short");
+    expect(root.querySelector("[data-dock-buy]")?.textContent).not.toContain("Buy BEST");
     expect(root.textContent).not.toMatch(/Best:\s+\d+×/);
     expect(root.querySelector("#advisor")).toBeNull();
     expect(root.querySelector("[data-enter]")?.textContent).toContain("Open");
@@ -140,10 +141,11 @@ describe("chrome + views", () => {
     expect(root.textContent).toContain("SIM");
   });
 
-  it("hides quantity chips until the qty tool is open", () => {
+  it("keeps quantity chips and BEST on the dock", () => {
     const root = document.createElement("div");
-    renderApp(root, newGame(), 1, { ...farm, qtyOpen: true }, null, noop);
+    renderApp(root, newGame(), 1, farm, null, noop);
     expect(root.querySelectorAll("[data-buymode]").length).toBe(5);
+    expect(root.querySelector("[data-best-mode]")?.textContent).toBe("BEST");
     expect(root.textContent).toContain("RANK");
     expect(root.textContent).toContain("100");
   });
@@ -171,7 +173,7 @@ describe("chrome + views", () => {
     state.views = 10_000;
     renderApp(root, state, 1, farm, "managers", noop);
     expect(root.querySelector("[data-row]")).toBeTruthy();
-    expect(root.querySelector("[data-buy-best]")).toBeTruthy();
+    expect(root.querySelector("[data-dock-buy]")).toBeTruthy();
     expect(root.textContent).toContain("Managers");
     expect(root.querySelector("[data-hire]")).toBeTruthy();
     expect(root.querySelector("[data-hire-all]")).toBeTruthy();
@@ -235,5 +237,50 @@ describe("chrome + views", () => {
     const advice = adviseFarm(state, 1);
     expect(advice.bestIndex).toBe(0);
     expect(bestButtonText(state, 1, advice)).toContain("Cursed Short");
+  });
+
+  it("BEST chip switches the mint button to Buy BEST", () => {
+    const root = document.createElement("div");
+    const state = newGame();
+    state.views = 80;
+    renderApp(root, state, 1, { ...farm, bestMode: true }, null, noop);
+    expect(root.querySelector("[data-best-mode]")?.classList.contains("is-on")).toBe(true);
+    expect(root.querySelector("[data-buy-best]")?.textContent).toContain("Buy BEST");
+    expect(root.querySelector("[data-buy-best]")?.textContent).toContain("Cursed Short");
+    expect(root.querySelector("[data-dock-buy]")).toBeNull();
+    expect(root.querySelector('[data-buymode="1"]')?.classList.contains("is-on")).toBe(false);
+  });
+
+  it("follows the selected Simulation row unless BEST mode is on", () => {
+    const root = document.createElement("div");
+    const state = newGame();
+    state.viewsThisRun = PRESTIGE_AT;
+    prestige(state);
+    state.viewsThisRun = state.nextPrestigeAt;
+    prestige(state);
+    state.views = 1e20;
+    const sim = 4;
+    renderApp(root, state, 1, { screen: "outside", selected: sim, bestMode: false }, null, noop);
+    expect(root.querySelector(`[data-row="${sim}"]`)?.classList.contains("is-on")).toBe(true);
+    const selectedBuy = root.querySelector("[data-dock-buy]") as HTMLButtonElement;
+    expect(selectedBuy.textContent).toContain("The Simulation");
+    expect(selectedBuy.textContent).not.toContain("Buy BEST");
+    expect(root.querySelector("[data-buy-best]")).toBeNull();
+
+    renderApp(root, state, 1, { screen: "outside", selected: sim, bestMode: true }, null, noop);
+    const bestBuy = root.querySelector("[data-buy-best]") as HTMLButtonElement;
+    expect(bestBuy).toBeTruthy();
+    expect(bestBuy.textContent).toContain("Buy BEST");
+    expect(root.querySelector(`[data-row="${sim}"]`)?.classList.contains("is-on")).toBe(true);
+  });
+
+  it("quantity chips leave BEST highlighted so the button can return to the row", () => {
+    const root = document.createElement("div");
+    const state = newGame();
+    state.views = 80;
+    renderApp(root, state, 10, { ...farm, selected: 0, bestMode: false }, null, noop);
+    expect(root.querySelector('[data-buymode="10"]')?.classList.contains("is-on")).toBe(true);
+    expect(root.querySelector("[data-best-mode]")?.classList.contains("is-on")).toBe(false);
+    expect(root.querySelector("[data-dock-buy]")?.textContent).toContain("Cursed Short");
   });
 });
