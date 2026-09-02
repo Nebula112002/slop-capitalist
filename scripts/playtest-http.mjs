@@ -13,6 +13,8 @@ const checks = {
   hireAll: js.includes("Hire all"),
   simulation: js.includes("The Simulation"),
   chest: js.includes("Comeback chest"),
+  hype: js.includes("Hype shop"),
+  username: js.includes("Username") || js.includes("username"),
   algo: js.includes("Enter the algorithm"),
   exportSave: js.includes("Copy export") || js.includes("exportSave"),
   tip: js.includes("Tap a row") || js.includes("Qty"),

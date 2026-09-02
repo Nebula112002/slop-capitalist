@@ -80,6 +80,7 @@ export function claimLegacySave(username: string, storage: Storage): boolean {
   const legacy = storage.getItem(SAVE_KEY);
   if (!legacy) return false;
   storage.setItem(key, legacy);
+  storage.removeItem(SAVE_KEY);
   return true;
 }
 

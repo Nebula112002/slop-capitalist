@@ -83,6 +83,7 @@ const away = applyOffline(state);
 offerComebackChest(state, away.offlineMs);
 if (view.screen !== "landing" && state.pendingChest) sheet = "chest";
 persistState();
+let pendingAway = away;
 
 function session(): UiSession {
   return { username: currentUser, names: users.names };
@@ -125,6 +126,7 @@ function signIn(raw: string): boolean {
   state = readStorage(store, currentUser);
   const loadedAway = applyOffline(state);
   offerComebackChest(state, loadedAway.offlineMs);
+  pendingAway = loadedAway;
   buyMode = 1;
   taps = newTapSession();
   resetFlavorSession();
@@ -144,11 +146,17 @@ function wipeCurrentUser(): void {
   persistRoute("farm");
   view = homeView(state, buyMode);
   sheet = null;
+  pendingAway = { earned: 0, offlineMs: 0 };
   taps = newTapSession();
   resetFlavorSession();
   persistState();
   rebuild();
   showToast("Fresh account. Post your first cursed short.");
+}
+
+function flushAwayToast(): void {
+  showAway(pendingAway.earned, pendingAway.offlineMs);
+  pendingAway = { earned: 0, offlineMs: 0 };
 }
 
 const handlers: UiHandlers = {
@@ -316,6 +324,7 @@ const handlers: UiHandlers = {
     sheet = state.pendingChest ? "chest" : null;
     persistState();
     rebuild();
+    flushAwayToast();
   },
   onBuyChestUpgrade() {
     if (!buyChestUpgrade(state)) return;
@@ -425,12 +434,22 @@ function rebuild(): void {
 }
 
 rebuild();
-showAway(away.earned, away.offlineMs);
+if (view.screen !== "landing") flushAwayToast();
 
 function frame(now: number): void {
   const dt = Math.min(0.25, (now - last) / 1000);
   last = now;
   const wall = Date.now();
+  if (view.screen === "landing") {
+    state.lastTs = wall;
+    patchMeters(root, state, buyMode, view, wall);
+    if (now - saveAt > 2000) {
+      persistState();
+      saveAt = now;
+    }
+    requestAnimationFrame(frame);
+    return;
+  }
   tick(state, dt, taps, wall);
   state.playMs += dt * 1000;
   patchMeters(root, state, buyMode, view, wall);

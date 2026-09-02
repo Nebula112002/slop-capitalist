@@ -24,4 +24,14 @@ describe("flavor picker", () => {
     expect(line.toLowerCase()).not.toContain("slop thickens");
     expect(line.toLowerCase()).not.toContain("look away");
   });
+
+  it("banks Hype on prestige instead of a fake +Nx viral toast", () => {
+    resetFlavorSession();
+    const line = pickFlavor("prestige", { gain: "10.0", name: "TikTok" }, () => 0);
+    expect(line).toContain("TikTok");
+    expect(line).toContain("10.0");
+    expect(line).toContain("Hype");
+    expect(line).not.toMatch(/\+10\.0x/);
+    expect(line.toLowerCase()).not.toContain("permanent +");
+  });
 });

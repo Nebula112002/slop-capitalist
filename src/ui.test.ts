@@ -9,6 +9,7 @@ import {
   hasSaveProgress,
   persistUiRoute,
   readUiRoute,
+  patchMeters,
   renderApp,
   type UiHandlers,
   type UiView,
@@ -69,6 +70,8 @@ describe("landing + route memory", () => {
     expect(root.querySelector("[data-row]")).toBeNull();
     expect(root.querySelector("[data-buy-best]")).toBeNull();
     expect(root.querySelector("#views")).toBeNull();
+    expect((root.querySelector("[data-continue]") as HTMLButtonElement).disabled).toBe(true);
+    expect(root.querySelector("#toast-slot")).toBeTruthy();
   });
 
   it("remembers last screen without touching the game save key", () => {
@@ -105,6 +108,22 @@ describe("landing + route memory", () => {
     const played = newGame();
     played.views = 12;
     expect(hasSaveProgress(played)).toBe(true);
+  });
+
+  it("Continue names the signed-in save, not whatever is typed", () => {
+    const root = document.createElement("div");
+    const state = newGame();
+    state.views = 40;
+    renderApp(root, state, 1, landing, null, noop, 0, { username: "Caleb", names: ["Caleb"] });
+    const cont = root.querySelector("[data-continue]") as HTMLButtonElement;
+    expect(cont.disabled).toBe(false);
+    expect(cont.textContent).toContain("Caleb");
+    expect(cont.textContent).toContain("40");
+    const box = root.querySelector("[data-username]") as HTMLInputElement;
+    box.value = "Alice";
+    patchMeters(root, state, 1, landing);
+    expect(cont.textContent).toContain("Caleb");
+    expect(cont.textContent).not.toContain("Alice");
   });
 });
 
@@ -204,6 +223,8 @@ describe("chrome + views", () => {
     renderApp(root, state, 1, farm, "prestige", noop);
     expect(root.textContent).toContain("0 / 1M");
     expect((root.querySelector("[data-prestige-go]") as HTMLButtonElement).disabled).toBe(true);
+    expect(root.textContent).toContain("Hype shop");
+    expect(root.textContent).not.toContain("Permanent +");
     expect(root.textContent).not.toContain("Enter the algorithm?");
   });
 

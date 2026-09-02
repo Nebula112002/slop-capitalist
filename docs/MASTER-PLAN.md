@@ -6,7 +6,8 @@
 
 1. **Opus pass** — [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md)
 2. **Monetization** — do not touch / not this pass. No IAP, ads, Stripe, or a paid prestige shop.
-3. **Do not regress:** username sign-in, prestige → Hype, idle-chest ranks, selected-row buy + BEST as a mode chip.
+
+Username sign-in, prestige → Hype, idle-chest ranks, and selected-row buy + BEST as a mode chip already shipped. Do not regress them.
 
 **Date:** 2026-09-02  
 **Repo:** `D:\AI\slop-capitalist` (own git). Do not fold into d-ai.  

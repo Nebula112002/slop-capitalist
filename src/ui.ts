@@ -767,10 +767,11 @@ function renderLanding(state: GameState, session: UiSession): string {
             : ""
         }
         <div class="landing-actions">
-          <button class="${signedIn ? "buy" : "ghost-lite"}" data-continue ${signedIn ? "" : "disabled"}>${continueLabel}</button>
+          <button class="${signedIn ? "buy" : "ghost-lite"}" data-continue data-continue-user="${escapeHtml(last)}" ${signedIn ? "" : "disabled"}>${continueLabel}</button>
           <button class="ghost-lite" data-new-run ${signedIn ? "" : "disabled"}>New run</button>
         </div>
         <p class="landing-note">Toy account. Username only — no password, no email. Local to this browser. Switching names keeps the other save. No ads. No checkout. Lives on this PC.</p>
+        <div id="toast-slot" class="toast-slot landing-toast" role="status"></div>
       </main>
     </div>
   `;
@@ -1094,9 +1095,9 @@ export function patchMeters(
   const clock = now > 0 ? now : Date.now();
   if (view.screen === "landing") {
     const cont = root.querySelector<HTMLButtonElement>("[data-continue]");
-    const name = root.querySelector<HTMLInputElement>("[data-username]")?.value.trim();
-    if (cont && hasSaveProgress(state) && name) {
-      cont.textContent = `Continue · ${name} · ${formatNum(state.views)} views`;
+    const signed = cont?.dataset.continueUser?.trim();
+    if (cont && signed && hasSaveProgress(state) && !cont.disabled) {
+      cont.textContent = `Continue · ${signed} · ${formatNum(state.views)} views`;
     }
     return;
   }

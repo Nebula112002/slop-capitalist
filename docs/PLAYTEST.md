@@ -1,19 +1,21 @@
-# Playtest — anti-tedium extras
+# Playtest — emptied burner redo
 
 **Date:** 2026-09-02  
 **Port:** `8896` (preview after `.\scripts\start.ps1`)
 
-Leftovers after emptying the back burner: [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md). **Monetization: do not touch / not this pass.**
+Leftovers: [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md). **Monetization: do not touch / not this pass.**
 
 The suck list below is historical (pre-landing cleanup). Do not re-implement chrome from it.
 
-## What I actually did
+## What I actually did (redo, after sign-in / Hype / idle chest)
 
-- Restarted `scripts/start.ps1` on `:8896`. Health: `{ ok, service: "slop-capitalist", port: 8896 }`.
-- Fresh localStorage in Chromium. Landed on **YouTube farm** (outside). Tip present. SIM chip locked.
-- Dismissed **Got it**. Dock said `Buy BEST · 1× Cursed Short · 4.3`. One tap bought it. No card hop.
-- Mgrs tab: **Hire all affordable** is there. Drop tab: claim drop. Pass tab: Infinity Intern track. Settings: mute, recap, export.
-- Sim: ~minutes of ticks, Buy BEST, hire-all, 5-minute away chest, prestige (pays once then locks), second prestige → The Simulation starter, algo layer, event/pass claims, export/import round-trip.
+- Built on the live tree: username sign-in, Hype shop, idle-chest ranks, selected-row buy + BEST chip, hire-all.
+- Sign-in vs landing: farm no longer ticks on the pitch. Continue names the signed-in save, not the text box. Away toast waits until Continue. Invalid username can toast on landing.
+- Legacy `slop-capitalist.v1` moves onto the **first** username only, then the old key is removed so Alice does not inherit Caleb.
+- Prestige pays **10 Hype** at 1M this-run, viral stays 1.00x, next bar is 1B. Toasts say Hype, not a fake `+10.0x`.
+- Chest is a **25% bonus** on top of away earnings, claimed once. Not a second copy of the wallet.
+- Mint still follows the selected row unless the BEST chip is on.
+- Restarted `:8896`. `npm test && npm run build`. HTTP + sim playtests.
 
 ## How BEST is scored
 
@@ -31,8 +33,12 @@ That is payback time, inverted. Time-to-double is the same ranking.
 
 - **Fresh farm did not earn until you opened a card and tapped.** Outside-as-home made that a softlock. Owned bars now auto-start while the page is open. Managers still own offline. Tap is optional juice.
 - **BEST had no proof.** Added tests that the badged row is the max `ΔVPS/cost`, that locked/unaffordable rows cannot win, and that `buyBest` spends only on that row.
+- **Landing ran the farm.** Sitting on the pitch accrued views and `playMs`, so Continue looked like a save. Frozen until Continue.
+- **Every new username cloned the legacy save.** First claim consumes `slop-capitalist.v1`.
+- **Prestige toast still said `+Nx` after Hype.** Flavor now banks Hype. Viral does not jump for free.
+- **Away toast died on landing** (no toast slot). Slot on the pitch; farm toast waits for Continue.
 
-Prestige spam stayed locked. Hire-all hired owned, affordable managers cheapest first.
+Prestige spam stayed locked. Hire-all hired owned, affordable managers cheapest first. Chest claim is bonus-once.
 
 ## Honest suck list
 
@@ -49,19 +55,17 @@ Prestige spam stayed locked. Hire-all hired owned, affordable managers cheapest 
 11. **Juice is a tiny beep.** Mute works. It does not make a buy feel like a buy. Fine. Do not add a cash-shop sound pack.
 12. **Half-cycle at 25/100/400/1000 is punchy.** Cursed Short hits the 0.25s floor at 100. Combined with income x2 at every mark, rank 25 is a 4× VPS cliff. That was the requested curve. It will make late Shorts feel like a strobe.
 
+Items 1–12 are Opus chrome / optional economy feel. Do not re-litigate them from this file.
+
 ## What is not suck (so I do not sound like I only hate it)
 
-- Outside-as-home + Buy BEST is the right loop. I progressed without opening a card.
+- Outside-as-home + selected-row buy + BEST as a mode chip is the right loop.
 - Hire-all + auto-run means I can leave the farm posting.
-- Prestige pays once, re-locks, second prestige opens Simulation, third layer (Algo) resets viral and keeps a second multiplier.
-- Export/import JSON works. Local only. No checkout.
+- Prestige pays Hype once, re-locks, second prestige opens Simulation. Algo stays hidden until it can fire.
+- Username saves stay on their own keys. Export/import JSON works. Local only. No checkout.
 - Live page is `:8896`, not `:3000`.
 
 ## What’s left for Caleb
 
-- Decide if **Algo** should hide until it is live, or share the prestige sheet.
-- Decide if **Managers** should stay a full camera tab or become a dock list so the farm never disappears.
-- Tune **event/pass** so the second open is worth it (or accept they are chrome).
-- Play a real hour on The Simulation numbers. I did not earn 1e12 views.
-- Optional: quieter top chrome. I did not restyle it; the leftover-loop frame is already crowded.
-- I did not add real-money anything. Do not.
+- **Opus pass** — [`docs/OPUS-GUIDELINES.md`](OPUS-GUIDELINES.md)
+- **Monetization: do not touch / not this pass.**

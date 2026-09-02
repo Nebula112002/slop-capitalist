@@ -55,8 +55,8 @@ You do **not** own a new economy. You do **not** own monetization.
 
 Do not revert these to get a prettier mock.
 
-- Landing page (local only). Username, Continue / New run, three bullets. Last route in `slop-capitalist.ui`. Continue never wipes.
-- Prestige is a compact chip → confirm sheet (Hype shop lives there). No fat Prestige/Algo pair on the farm.
+- **Landing page (local only).** Username, Continue / New run, three bullets. Last route in `slop-capitalist.ui`. Continue never wipes. The farm does not tick on the pitch; away toasts wait until Continue.
+- Prestige is a compact chip → confirm sheet (Hype shop lives there). No fat Prestige/Algo pair on the farm. Toasts bank Hype — do not restore Permanent +Nx viral copy.
 - Algo hidden until it can fire or they already have a layer.
 - Managers / Drop / Pass are **sheets over the farm**, not tabs that replace it.
 - Header BEST line removed. Row **BEST** badge + optional BEST *mode* remain.

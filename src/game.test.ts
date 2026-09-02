@@ -31,10 +31,12 @@ import {
   newTapSession,
   offerComebackChest,
   parseBuyMode,
+  persist,
   potentialVps,
   prestige,
   prestigeGain,
   quotedBuy,
+  readStorage,
   resolveBuyCount,
   saveGame,
   setPlanet,
@@ -314,13 +316,15 @@ describe("offline + prestige", () => {
     expect(canPrestige(state)).toBe(true);
     const gain = prestige(state);
     expect(gain).toBe(prestigeGain(PRESTIGE_AT));
+    expect(gain).toBe(10);
     expect(state.tiktokUnlocked).toBe(true);
     expect(state.planet).toBe("tiktok");
     expect(state.views).toBe(0);
     expect(state.viewsThisRun).toBe(0);
     expect(state.nextPrestigeAt).toBe(PRESTIGE_TIKTOK_AT);
     expect(state.businesses.tiktok[0].owned).toBe(1);
-    expect(state.hype).toBeGreaterThan(0);
+    expect(state.prestigeMult).toBe(1);
+    expect(state.hype).toBe(10);
     expect(canPrestige(state)).toBe(false);
     const stacked = state.hype;
     expect(prestige(state)).toBe(0);
@@ -644,12 +648,18 @@ describe("hire all + extras", () => {
     state.lastTs = 1_000;
     const { earned, offlineMs } = applyOffline(state, 1_000 + 120_000);
     expect(earned).toBeGreaterThan(0);
+    expect(state.views).toBe(earned);
     const chest = offerComebackChest(state, offlineMs);
     expect(chest).toBeGreaterThan(0);
+    expect(chest).toBeCloseTo(earned * 0.25, 5);
+    expect(chest).toBeLessThan(earned);
     expect(state.pendingChest?.views).toBe(chest);
     const claimed = claimChest(state);
     expect(claimed).toBe(chest);
+    expect(state.views).toBeCloseTo(earned + claimed, 5);
+    expect(state.views).not.toBeCloseTo(earned * 2, 5);
     expect(claimChest(state)).toBe(0);
+    expect(state.views).toBeCloseTo(earned + claimed, 5);
   });
 
   it("locks algo until viral is high, then resets viral and keeps algo", () => {
@@ -677,6 +687,39 @@ describe("hire all + extras", () => {
     expect(loaded!.views).toBe(1234);
     expect(loaded!.prestigeMult).toBe(2.5);
     expect(importSave("nope")).toBeNull();
+  });
+
+  it("keeps per-username saves on separate keys", () => {
+    const data: Record<string, string> = {};
+    const storage = {
+      getItem(key: string) {
+        return data[key] ?? null;
+      },
+      setItem(key: string, value: string) {
+        data[key] = value;
+      },
+      removeItem(key: string) {
+        delete data[key];
+      },
+      clear() {
+        for (const key of Object.keys(data)) delete data[key];
+      },
+      key() {
+        return null;
+      },
+      get length() {
+        return Object.keys(data).length;
+      },
+    } as Storage;
+    const caleb = newGame();
+    caleb.views = 11;
+    persist(caleb, storage, "Caleb");
+    const alice = newGame();
+    alice.views = 22;
+    persist(alice, storage, "Alice");
+    expect(readStorage(storage, "Caleb").views).toBe(11);
+    expect(readStorage(storage, "Alice").views).toBe(22);
+    expect(storage.getItem(SAVE_KEY)).toBeNull();
   });
 
   it("keeps this-run prestige lock after extras", () => {

@@ -39,7 +39,9 @@ Stop: `.\scripts\stop.ps1`
 - Income x2 at 25 / 50 / 100 / … · cycle time **halves at 25 / 100 / 400 / 1000** (floor 0.25s)
 - Offline progress (managers only, 8h cap)
 - Local-clock **Trend Drop** + free **Infinity Intern** pass (no ads, no IAP)
-- Save: `localStorage` key `slop-capitalist.v1` (hydrate, no wipe)
+- Save: `localStorage` key `slop-capitalist.v1` plus per-username keys (`slop-capitalist.v1.<slug>`). Username only. No password.
+- Prestige banks **Hype** (shop in the prestige sheet). First bar 1M this-run, then 1B, then The Simulation.
+- Idle **comeback chest**: 25% of manager VPS on top of away earnings, ranks in settings.
 - Next visual pass: `docs/OPUS-GUIDELINES.md` (Opus). Monetization: not this pass.
 
 You start with one cursed short. Tap the bar. Buy more. Hire a gremlin. Walk away.

@@ -79,9 +79,9 @@ const claimed = claimChest(state);
 say(`comeback: away ${away.offlineMs}ms earned ${away.earned.toFixed(0)} chest ${chest.toFixed(0)} claimed ${claimed.toFixed(0)}`);
 
 state.viewsThisRun = PRESTIGE_AT;
-const first = prestige(state);
-const spam = prestige(state);
-say(`prestige +${first.toFixed(2)}x planet=${state.planet} spam=${spam} locked=${!canPrestige(state)}`);
+    const first = prestige(state);
+    const spam = prestige(state);
+    say(`prestige +${first.toFixed(1)} Hype viral=${state.prestigeMult} planet=${state.planet} spam=${spam} locked=${!canPrestige(state)}`);
 
 state.viewsThisRun = state.nextPrestigeAt;
 prestige(state);
@@ -103,6 +103,8 @@ const loaded = importSave(raw);
 say(`export/import: ${loaded ? `views ${loaded.views.toFixed(0)} algo ${loaded.algoMult}` : "FAILED"}`);
 
 if (spam !== 0) say("BUG: prestige spam still pays");
+if (first > 0 && state.prestigeMult !== 1) say("BUG: prestige still grants free viral");
+if (chest > 0 && claimed === away.earned) say("BUG: chest double-pays the away wallet");
 if (!state.simulationUnlocked) say("BUG: Simulation missing after second prestige");
 if (chest > 0 && claimed !== chest) say("BUG: chest claim mismatch");
 if (!loaded) say("BUG: import failed");
