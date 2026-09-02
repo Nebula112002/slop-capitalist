@@ -18,12 +18,13 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Slop" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@500;700&family=IBM+Plex+Sans:wght@400;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <!--
+      Fonts are self-hosted (scripts/fetch-fonts.mjs). Nothing here reaches a
+      third party, so no player IP is handed to anyone on page load.
+    -->
+    <link rel="stylesheet" href="/fonts/fonts.css" />
+    <link rel="preload" href="/fonts/plex-sans-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/bebas-neue-400-latin.woff2" as="font" type="font/woff2" crossorigin />
     <style>
       /* Boot paint. Without this the first frame is a white flash, which is the
          one thing that makes an installed app feel like a web page. */
