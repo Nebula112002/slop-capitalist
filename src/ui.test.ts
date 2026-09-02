@@ -259,6 +259,9 @@ describe("chrome + views", () => {
     state.viewsThisRun = state.nextPrestigeAt;
     prestige(state);
     state.views = 1e20;
+    state.businesses.simulation.forEach((row) => {
+      row.owned = Math.max(row.owned, 1);
+    });
     const sim = 4;
     renderApp(root, state, 1, { screen: "outside", selected: sim, bestMode: false }, null, noop);
     expect(root.querySelector(`[data-row="${sim}"]`)?.classList.contains("is-on")).toBe(true);
