@@ -6,6 +6,91 @@ Leftovers: [`docs/OPUS.md`](OPUS.md). **Monetization: do not touch / not this pa
 
 ---
 
+# Pass 3 — the auto-play bug, and app-shell polish
+
+**Date:** 2026-09-02 · `npm test` (105) + `npm run build` green · playtest green ·
+no console errors, warnings or failed requests
+
+Reported: *"it's auto tapping when there is 0 managers."* Correct, and it was two
+separate things.
+
+## 1. Unmanaged rows restarted themselves
+
+`tick()` did this:
+
+```ts
+if (row.manager || !row.running) row.running = true;
+```
+
+An unmanaged row finished a cycle, set `running = false`, and the next frame
+turned it straight back on. So every owned row ran forever and **a manager
+bought you nothing while the tab was open** — the one upgrade the whole
+mid-game is built around. There was even a test locking the behaviour in
+("auto-starts owned bars so the farm screen can progress without a tap").
+
+Now only managers run themselves. An unmanaged row runs the one cycle you
+tapped for and stops. Two tests replaced the old one: an unmanaged row earns
+nothing over 5 seconds of ticks, and it pays exactly one cycle per tap.
+
+That needed a real tap target on the farm, so rows were rebuilt as three
+**native buttons** — `run` (the icon), `pick` (the body), `open` (selected only)
+— instead of a `listbox` option with controls nested inside it. The run button
+has four labelled states: ready (mint edge + pulse), live, auto (mint corner
+dot, tap to nudge), and empty (disabled). Tapping patches instead of
+re-rendering, because a rebuild drops the button out from under the next tap.
+The first-run tip moved above the list and became a one-line strip, so it is
+visible without scrolling and all five rows still fit.
+
+## 2. The wallet was earning with every row idle
+
+Less obvious and worse for trust: `tick()` credits `extraEventVps` every frame
+no matter what you own, and the live event multiplies every farm. A fresh farm
+therefore reads **46/s while all five rows say "idle"** — which looks exactly
+like the game playing itself.
+
+The economy is untouched. The UI now attributes it: a `Drop ×1.75 · +46/s` chip
+in the HUD meta line that opens the drop sheet. It explains the income, and it
+gives the drop a one-tap entrance without a permanent ticker row.
+
+## 3. App-shell polish
+
+Visual launch-readiness, not a store submission:
+
+- New icon mark (three climbing farm rows plus a gold payout dot) as
+  `public/favicon.svg`, plus a full-bleed maskable variant with the art inside
+  the 80% safe circle. `scripts/make-icons.mjs` rasterises both to
+  `icon-192`, `icon-512`, `icon-maskable-512` and `apple-touch-icon` using
+  Playwright, so there is no image toolchain to install.
+- `manifest.webmanifest` — standalone, portrait, theme + background `#08070c`,
+  four icons. Plus `theme-color`, apple touch icon and web-app meta.
+- `viewport-fit=cover`, so `env(safe-area-inset-*)` is finally non-zero on
+  notched phones (the padding was already there, doing nothing).
+- A boot splash in `index.html` that hides itself via `#app:not(:empty) + #boot`,
+  killing the white first-frame flash that makes an installed app feel like a
+  web page.
+- `touch-action: manipulation` on every button (no double-tap zoom, no 300ms
+  delay) and `overscroll-behavior: none` on the body (no pull-to-refresh
+  mid-tap). Both matter a lot more now that tapping is the loop.
+- The landing shows the app mark above the wordmark.
+
+**No service worker, deliberately.** It installs and looks right without one,
+and caching a bundle on a machine that rebuilds constantly is a staleness
+footgun. Reasoning and the one-line fix if it is ever wanted are in the
+design doc.
+
+## 4. Written down for the next agent
+
+[`docs/DESIGN-SYSTEM.md`](DESIGN-SYSTEM.md) — tokens and the one-accent rule,
+the fold budget and how CSS enforces it, anatomy of every component, the
+`renderApp` vs `patchMeters` split and its rules, interaction and motion rules,
+an a11y checklist to copy, the copy voice, recipes for adding a sheet / HUD chip
+/ row field / quantity chip / icons, the verification loop, and eleven traps
+that each cost real time (`innerText` uppercasing, preview serving `dist`,
+hydration inferring `prestigeCount` from Hype, `rowVps` vs `potentialVps`, and
+so on).
+
+---
+
 # Pass 2 — Opus UI/UX overhaul
 
 **Date:** 2026-09-02 · `npm test` (101) + `npm run build` green · `node scripts/playtest-browser.mjs`

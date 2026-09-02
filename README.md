@@ -35,16 +35,25 @@ Stop: `.\scripts\stop.ps1`
 
 - Currency: **Views**
 - Planets: YouTube → TikTok (1st prestige) → **The Simulation** (2nd prestige)
-- Managers (autopilot), plus a **Mgrs** dock tab
+- **Tap a row's icon to post one clip.** Only a hired manager runs a farm on its own
 - Income x2 at 25 / 50 / 100 / … · cycle time **halves at 25 / 100 / 400 / 1000** (floor 0.25s)
 - Offline progress (managers only, 8h cap)
 - Local-clock **Trend Drop** + free **Infinity Intern** pass (no ads, no IAP)
 - Save: `localStorage` key `slop-capitalist.v1` plus per-username keys (`slop-capitalist.v1.<slug>`). Username only. No password.
 - Prestige banks **Hype** (shop in the prestige sheet). First bar 1M this-run, then 1B, then The Simulation.
 - Idle **comeback chest**: 25% of manager VPS on top of away earnings, ranks in settings.
-- Next visual pass: `docs/OPUS.md` (Opus). Monetization: not this pass.
+- Rare jobs (managers, drop, pass, stats, settings) live in one menu sheet, not the dock.
+- Installs like an app: web manifest, maskable icon, standalone display, no service worker on purpose.
 
-You start with one cursed short. Tap the bar. Buy more. Hire a gremlin. Walk away.
+You start with one cursed short. Tap its icon. Buy more. Hire a gremlin. Walk away.
+
+## Working on the UI
+
+Read [`docs/DESIGN-SYSTEM.md`](docs/DESIGN-SYSTEM.md) first — tokens, the
+"list owns the fold" budget, component anatomy, the `renderApp` vs `patchMeters`
+split, the a11y checklist, recipes, and the traps. What shipped and why is in
+[`docs/PLAYTEST.md`](docs/PLAYTEST.md); the brief is
+[`docs/OPUS.md`](docs/OPUS.md). Monetization: not this pass.
 
 ## Stack
 

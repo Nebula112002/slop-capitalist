@@ -38,7 +38,10 @@ try {
   notes.push(`header BEST repeat: ${/Best:\s+\d/.test(farm)}`);
   notes.push(`Algo on a fresh farm: ${has(farm, "Algo 1.00")}`);
   notes.push(`chip teaching line: ${(await page.locator("[data-dock-hint]").innerText()).trim()}`);
-  notes.push(`rare jobs in the dock: ${/\bMgrs\b/.test(farm) || /\bDrop\b/.test(farm)}`);
+  notes.push(
+    `rare-job buttons in the dock: ${await page.evaluate(() => document.querySelectorAll(".dock [data-sheet-open]").length)}`,
+  );
+  notes.push(`drop income attributed: ${(await page.locator("#drop").innerText()).trim()}`);
   notes.push(
     `farm hire-all: ${await page.evaluate(() => {
       const btn = document.querySelector(".pill-hire");
@@ -83,29 +86,41 @@ try {
     `fold: ${fold.viewport}px tall, chrome ${fold.hud}px top + ${fold.dock}px dock, ${fold.rows} rows at ${fold.rowH}px, ${fold.inFold} fully visible, list owns ${fold.listShare}% of the screen`,
   );
 
+  // Nothing runs itself before a manager. The icon is the whole early game.
+  const views = () => page.evaluate(() => document.querySelector("#views")?.textContent);
+  const run = page.locator("[data-row='0'] [data-row-run]");
+  notes.push(`run button state on a fresh farm: ${await run.getAttribute("class")}`);
+  notes.push(`run button label: ${await run.getAttribute("aria-label")}`);
+  await page.waitForTimeout(2000);
+  notes.push(`views after 2s of not touching anything: ${await views()}`);
+  for (let i = 0; i < 8; i++) {
+    await run.click();
+    await page.waitForTimeout(120);
+  }
+  await page.waitForTimeout(400);
+  notes.push(`views after 8 taps: ${await views()}`);
+
   const rowBuy = page.locator("[data-dock-buy]");
   notes.push(`dock: ${(await rowBuy.innerText()).replace(/\s+/g, " ").trim()}`);
-  if (await rowBuy.isDisabled()) {
-    await page.waitForTimeout(1500);
-    notes.push(`after 1.5s: ${(await rowBuy.innerText()).replace(/\s+/g, " ").trim()}`);
-  }
   if (!(await rowBuy.isDisabled())) {
     await rowBuy.click();
     notes.push("bought the selected row");
+  } else {
+    notes.push("SELECTED BUY STILL DISABLED after taps");
   }
 
   // Selecting a second row must move the mint button with it.
-  await page.locator("[data-row='1']").click();
+  await page.locator("[data-row='1'] [data-select]").click();
   notes.push(`select row 2 -> dock: ${(await rowBuy.innerText()).replace(/\s+/g, " ").trim()}`);
   notes.push(`open button count (selected-only): ${await page.locator("[data-enter]").count()}`);
 
-  // Keyboard: the list is a real listbox.
-  await page.locator("[data-row='1']").focus();
+  // Keyboard: arrows walk the list of native row buttons.
+  await page.locator("[data-row='1'] [data-select]").focus();
   await page.keyboard.press("ArrowDown");
-  const kb = await page.locator("[data-row='2']").getAttribute("aria-selected");
+  const kb = await page.locator("[data-row='2'] [data-select]").getAttribute("aria-pressed");
   notes.push(`ArrowDown selects the next farm: ${kb === "true"}`);
 
-  await page.locator("[data-row='0']").click();
+  await page.locator("[data-row='0'] [data-select]").click();
   await page.locator("[data-best-mode]").click();
   const best = page.locator("[data-buy-best]");
   notes.push(`BEST mode dock: ${(await best.innerText()).replace(/\s+/g, " ").trim()}`);
@@ -147,7 +162,7 @@ try {
   notes.push("backdrop tap closed the sheet");
 
   await page.locator("[data-overflow]").click();
-  await page.locator('[data-sheet-open="managers"]').click();
+  await page.locator('[data-sheet-card] [data-sheet-open="managers"]').click();
   await page.waitForSelector("[data-hire-all]");
   notes.push(
     `managers sheet: ${has(await page.locator("[data-sheet-card]").innerText(), "Hire all affordable") ? "hire-all present" : "MISSING hire-all"}`,
@@ -155,7 +170,7 @@ try {
   await closeSheet();
 
   await page.locator("[data-overflow]").click();
-  await page.locator('[data-sheet-open="event"]').click();
+  await page.locator('[data-sheet-card] [data-sheet-open="event"]').click();
   await page.waitForSelector("[data-claim-drop]");
   notes.push(`drop sheet: ${(await page.locator("[data-claim-drop]").innerText()).trim()}`);
   await page.locator("[data-claim-drop]").click();
@@ -163,7 +178,7 @@ try {
   await closeSheet();
 
   await page.locator("[data-overflow]").click();
-  await page.locator('[data-sheet-open="pass"]').click();
+  await page.locator('[data-sheet-card] [data-sheet-open="pass"]').click();
   await page.waitForSelector("[data-claim-pass]");
   notes.push(
     `pass sheet: ${has(await page.locator("[data-sheet-card]").innerText(), "Infinity Intern") ? "pass track" : "MISSING"}`,
@@ -171,7 +186,7 @@ try {
   await closeSheet();
 
   await page.locator("[data-overflow]").click();
-  await page.locator('[data-sheet-open="settings"]').click();
+  await page.locator('[data-sheet-card] [data-sheet-open="settings"]').click();
   await page.waitForSelector("[data-mute]");
   const settings = await page.locator("[data-sheet-card]").innerText();
   notes.push(
