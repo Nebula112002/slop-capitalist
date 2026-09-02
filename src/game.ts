@@ -864,10 +864,11 @@ export function buyBest(state: GameState, mode: BuyMode): { index: number; count
 export function defaultSelected(state: GameState, mode: BuyMode): number {
   const advice = adviseFarm(state, mode);
   if (advice.bestIndex !== null) return advice.bestIndex;
-  if (advice.lockIndex !== null) return advice.lockIndex;
   const rows = state.businesses[state.planet];
   const firstOwned = rows.findIndex((row) => row.owned > 0);
-  return firstOwned >= 0 ? firstOwned : 0;
+  if (firstOwned >= 0) return firstOwned;
+  if (advice.lockIndex !== null) return advice.lockIndex;
+  return 0;
 }
 
 function grantReward(state: GameState, kind: RewardKind, amount?: number, title?: string): void {

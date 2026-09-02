@@ -30,7 +30,7 @@ try {
   notes.push(`header BEST repeat: ${/Best:\s+\d/.test(farm)}`);
   notes.push(`Algo on fresh farm: ${/\bAlgo\b/.test(farm) && farm.includes("Algo 1.00")}`);
   notes.push(`qty chips visible: ${farm.includes("RANK") && farm.includes("MAX") ? "yes" : "hidden"}`);
-  notes.push(`qty label: ${farm.includes("Qty")}`);
+  notes.push(`qty label: ${/qty/i.test(farm)}`);
   notes.push(`farm hire-all: ${farm.includes("Hire all")}`);
   notes.push(`farm tip after landing: ${farm.includes("Got it")}`);
   notes.push(`SIM chip: ${farm.includes("SIM")}`);

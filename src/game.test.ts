@@ -281,6 +281,7 @@ describe("outside advice", () => {
     const advice = adviseFarm(state, 1);
     expect(advice.bestIndex).toBeNull();
     expect(advice.lockIndex).toBe(1);
+    expect(defaultSelected(state, 1)).toBe(0);
   });
 
   it("scores RANK copies that cross a milestone higher", () => {
