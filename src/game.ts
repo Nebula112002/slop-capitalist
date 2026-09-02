@@ -1,5 +1,6 @@
 import {
   ALGO_AT,
+  ALGO_PRESTIGE_AT,
   BUSINESSES,
   CHEST_MIN_MS,
   CHEST_RATE,
@@ -7,6 +8,10 @@ import {
   EVENT_PERIOD_MS,
   EVENT_SHOP,
   EVENTS,
+  HYPE_BASE,
+  HYPE_DAMP,
+  HYPE_LOG,
+  HYPE_SHOP,
   MILESTONES,
   MIN_CYCLE_SEC,
   NUDGE_COOLDOWN_MS,
@@ -17,17 +22,29 @@ import {
   PLANET_IDS,
   PLANETS,
   PRESTIGE_AT,
+  PRESTIGE_LATE_SCALE,
   PRESTIGE_SCALE,
+  PRESTIGE_SIM_AT,
+  PRESTIGE_TIKTOK_AT,
   SAVE_KEY,
   SAVE_VERSION,
+  SHOP_MGR_CUT,
+  SHOP_OFFLINE_MS,
+  SHOP_STARTER_EACH,
+  SHOP_TEMPO_CUT,
+  SHOP_VIRAL_PER,
   SPEED_CUT,
   SPEED_MARKS,
+  emptyShop,
   type EventDef,
   type EventShopItem,
+  type HypeShopId,
   type PassTier,
   type PlanetId,
   type RewardKind,
+  type ShopLevels,
 } from "./data";
+import { saveKeyFor } from "./users";
 
 export type BuyMode = 1 | 10 | 100 | "max" | "rank";
 
@@ -58,6 +75,8 @@ export type GameState = {
   nextPrestigeAt: number;
   prestigeMult: number;
   prestigeCount: number;
+  hype: number;
+  shop: ShopLevels;
   algoMult: number;
   algoCount: number;
   tiktokUnlocked: boolean;
@@ -109,9 +128,9 @@ export type LiveEvent = {
   endsAt: number;
 };
 
-function emptyBusinesses(planet: PlanetId, starter = false): BusinessRuntime[] {
+function emptyBusinesses(planet: PlanetId, starterCopies = 0): BusinessRuntime[] {
   return BUSINESSES[planet].map((_, i) => ({
-    owned: starter && i === 0 ? 1 : 0,
+    owned: i === 0 ? starterCopies : 0,
     manager: false,
     progress: 0,
     running: false,
@@ -126,9 +145,9 @@ function emptyPass(): PassSave {
   return { claimed: [] };
 }
 
-function emptyBoard(): Record<PlanetId, BusinessRuntime[]> {
+function emptyBoard(starterCopies = 1): Record<PlanetId, BusinessRuntime[]> {
   return {
-    youtube: emptyBusinesses("youtube", true),
+    youtube: emptyBusinesses("youtube", starterCopies),
     tiktok: emptyBusinesses("tiktok"),
     simulation: emptyBusinesses("simulation"),
   };
@@ -143,6 +162,8 @@ export function newGame(now = Date.now()): GameState {
     nextPrestigeAt: PRESTIGE_AT,
     prestigeMult: 1,
     prestigeCount: 0,
+    hype: 0,
+    shop: emptyShop(),
     algoMult: 1,
     algoCount: 0,
     tiktokUnlocked: false,
@@ -172,9 +193,9 @@ function isPlanetId(value: unknown): value is PlanetId {
 function hydrateBusinesses(
   planet: PlanetId,
   raw: unknown,
-  starter: boolean,
+  starterCopies: number,
 ): BusinessRuntime[] {
-  const fallback = emptyBusinesses(planet, starter);
+  const fallback = emptyBusinesses(planet, starterCopies);
   if (!Array.isArray(raw)) return fallback;
   return fallback.map((_, i) => {
     const row = raw[i] as Partial<BusinessRuntime> | undefined;
@@ -188,30 +209,56 @@ function hydrateBusinesses(
 }
 
 function alreadyPrestiged(parsed: Partial<GameState>): boolean {
-  return Boolean(parsed.tiktokUnlocked) || (Number(parsed.prestigeMult) || 1) > 1;
+  return (
+    Boolean(parsed.tiktokUnlocked) ||
+    (Number(parsed.prestigeMult) || 1) > 1 ||
+    (Number(parsed.prestigeCount) || 0) > 0 ||
+    (Number(parsed.hype) || 0) > 0
+  );
 }
 
-function hydrateRunMeters(parsed: Partial<GameState>): {
+function inferPrestigeCount(parsed: Partial<GameState>): number {
+  const stored = Math.max(0, Math.floor(Number(parsed.prestigeCount) || 0));
+  if (stored > 0) return stored;
+  if (parsed.simulationUnlocked || (Number(parsed.algoMult) || 1) > 1 || (Number(parsed.algoCount) || 0) > 0) {
+    return 2;
+  }
+  if (alreadyPrestiged(parsed)) return 1;
+  return 0;
+}
+
+export function prestigeThreshold(prestigeCount: number): number {
+  if (prestigeCount <= 0) return PRESTIGE_AT;
+  if (prestigeCount === 1) return PRESTIGE_TIKTOK_AT;
+  if (prestigeCount === 2) return PRESTIGE_SIM_AT;
+  return PRESTIGE_SIM_AT * PRESTIGE_LATE_SCALE ** (prestigeCount - 2);
+}
+
+function hydrateRunMeters(
+  parsed: Partial<GameState>,
+  prestigeCount: number,
+): {
   viewsThisRun: number;
   nextPrestigeAt: number;
 } {
+  const floor = prestigeThreshold(prestigeCount);
   const hasRunFields =
     Number(parsed.v) >= 2 &&
     parsed.viewsThisRun !== undefined &&
     parsed.nextPrestigeAt !== undefined;
+  let viewsThisRun: number;
+  let storedNext: number;
   if (hasRunFields) {
-    return {
-      viewsThisRun: Math.max(0, Number(parsed.viewsThisRun) || 0),
-      nextPrestigeAt: Math.max(PRESTIGE_AT, Number(parsed.nextPrestigeAt) || PRESTIGE_AT),
-    };
+    viewsThisRun = Math.max(0, Number(parsed.viewsThisRun) || 0);
+    storedNext = Math.max(PRESTIGE_AT, Number(parsed.nextPrestigeAt) || PRESTIGE_AT);
+  } else if (alreadyPrestiged(parsed)) {
+    viewsThisRun = 0;
+    storedNext = PRESTIGE_AT;
+  } else {
+    viewsThisRun = Math.max(0, Number(parsed.lifetimeViews) || 0);
+    storedNext = PRESTIGE_AT;
   }
-  if (alreadyPrestiged(parsed)) {
-    return { viewsThisRun: 0, nextPrestigeAt: PRESTIGE_AT };
-  }
-  return {
-    viewsThisRun: Math.max(0, Number(parsed.lifetimeViews) || 0),
-    nextPrestigeAt: PRESTIGE_AT,
-  };
+  return { viewsThisRun, nextPrestigeAt: Math.max(floor, storedNext) };
 }
 
 function hydrateEvent(raw: unknown): EventSave {
@@ -235,8 +282,22 @@ function hydratePass(raw: unknown): PassSave {
   };
 }
 
-function hydrateSimulationUnlocked(parsed: Partial<GameState>, nextPrestigeAt: number): boolean {
+function hydrateShop(raw: unknown): ShopLevels {
+  const fallback = emptyShop();
+  if (!raw || typeof raw !== "object") return fallback;
+  const row = raw as Partial<ShopLevels>;
+  return {
+    viral: Math.max(0, Math.floor(Number(row.viral) || 0)),
+    tempo: Math.max(0, Math.floor(Number(row.tempo) || 0)),
+    managers: Math.max(0, Math.floor(Number(row.managers) || 0)),
+    offline: Math.max(0, Math.floor(Number(row.offline) || 0)),
+    starter: Math.max(0, Math.floor(Number(row.starter) || 0)),
+  };
+}
+
+function hydrateSimulationUnlocked(parsed: Partial<GameState>, prestigeCount: number, nextPrestigeAt: number): boolean {
   if (parsed.simulationUnlocked !== undefined) return Boolean(parsed.simulationUnlocked);
+  if (prestigeCount >= 2) return true;
   return nextPrestigeAt >= PRESTIGE_AT * PRESTIGE_SCALE * PRESTIGE_SCALE;
 }
 
@@ -247,8 +308,10 @@ export function loadGame(raw: string | null, now = Date.now()): GameState {
       businesses?: Partial<Record<PlanetId, unknown>>;
     };
     const base = newGame(now);
-    const run = hydrateRunMeters(parsed);
-    const simulationUnlocked = hydrateSimulationUnlocked(parsed, run.nextPrestigeAt);
+    const prestigeCount = inferPrestigeCount(parsed);
+    const run = hydrateRunMeters(parsed, prestigeCount);
+    const simulationUnlocked = hydrateSimulationUnlocked(parsed, prestigeCount, run.nextPrestigeAt);
+    const shop = hydrateShop(parsed.shop);
     const title =
       typeof parsed.title === "string"
         ? parsed.title
@@ -262,17 +325,19 @@ export function loadGame(raw: string | null, now = Date.now()): GameState {
       viewsThisRun: run.viewsThisRun,
       nextPrestigeAt: run.nextPrestigeAt,
       prestigeMult: Math.max(1, Number(parsed.prestigeMult) || 1),
-      prestigeCount: Math.max(0, Math.floor(Number(parsed.prestigeCount) || (parsed.simulationUnlocked ? 2 : parsed.tiktokUnlocked ? 1 : 0))),
+      prestigeCount,
+      hype: Math.max(0, Number(parsed.hype) || 0),
+      shop,
       algoMult: Math.max(1, Number(parsed.algoMult) || 1),
       algoCount: Math.max(0, Math.floor(Number(parsed.algoCount) || 0)),
-      tiktokUnlocked: Boolean(parsed.tiktokUnlocked),
+      tiktokUnlocked: Boolean(parsed.tiktokUnlocked) || prestigeCount >= 1,
       simulationUnlocked,
       title,
       planet: isPlanetId(parsed.planet) ? parsed.planet : "youtube",
       businesses: {
-        youtube: hydrateBusinesses("youtube", parsed.businesses?.youtube, true),
-        tiktok: hydrateBusinesses("tiktok", parsed.businesses?.tiktok, Boolean(parsed.tiktokUnlocked)),
-        simulation: hydrateBusinesses("simulation", parsed.businesses?.simulation, simulationUnlocked),
+        youtube: hydrateBusinesses("youtube", parsed.businesses?.youtube, 1),
+        tiktok: hydrateBusinesses("tiktok", parsed.businesses?.tiktok, parsed.tiktokUnlocked || prestigeCount >= 1 ? 1 : 0),
+        simulation: hydrateBusinesses("simulation", parsed.businesses?.simulation, simulationUnlocked ? 1 : 0),
       },
       event: hydrateEvent(parsed.event),
       pass: hydratePass(parsed.pass),
@@ -304,8 +369,13 @@ export function saveGame(state: GameState): string {
   return JSON.stringify({ ...state, lastTs: Date.now() });
 }
 
-export function persist(state: GameState, storage: Storage = localStorage): void {
-  storage.setItem(SAVE_KEY, saveGame(state));
+export function persist(state: GameState, storage: Storage = localStorage, username?: string): void {
+  const raw = saveGame(state);
+  if (username && username.trim()) {
+    storage.setItem(saveKeyFor(username), raw);
+    return;
+  }
+  storage.setItem(SAVE_KEY, raw);
 }
 
 export function milestoneRanks(owned: number): number {
@@ -357,8 +427,20 @@ export function maxAffordable(
   return Math.max(0, n);
 }
 
+export function starterOwned(state: GameState): number {
+  return 1 + SHOP_STARTER_EACH * (state.shop?.starter ?? 0);
+}
+
+export function shopViralMult(state: GameState): number {
+  return (1 + SHOP_VIRAL_PER) ** (state.shop?.viral ?? 0);
+}
+
 export function totalMult(state: GameState): number {
-  return state.prestigeMult * Math.max(1, state.algoMult);
+  return state.prestigeMult * Math.max(1, state.algoMult) * shopViralMult(state);
+}
+
+export function cycleSecFor(baseCycle: number, owned: number, tempoLevels = 0): number {
+  return Math.max(MIN_CYCLE_SEC, effectiveCycleSec(baseCycle, owned) * SHOP_TEMPO_CUT ** tempoLevels);
 }
 
 export function cycleIncome(planet: PlanetId, index: number, owned: number, prestigeMult: number): number {
@@ -372,17 +454,18 @@ export function potentialVps(
   index: number,
   owned: number,
   prestigeMult: number,
+  tempoLevels = 0,
 ): number {
   if (owned <= 0) return 0;
   const def = BUSINESSES[planet][index];
-  return cycleIncome(planet, index, owned, prestigeMult) / effectiveCycleSec(def.cycleSec, owned);
+  return cycleIncome(planet, index, owned, prestigeMult) / cycleSecFor(def.cycleSec, owned, tempoLevels);
 }
 
 export function rowVps(state: GameState, index: number, planet: PlanetId = state.planet): number {
   const row = state.businesses[planet][index];
   if (!row || row.owned <= 0) return 0;
   if (!row.manager && !row.running) return 0;
-  return potentialVps(planet, index, row.owned, totalMult(state));
+  return potentialVps(planet, index, row.owned, totalMult(state), state.shop?.tempo ?? 0);
 }
 
 export function viewsPerSec(state: GameState, planet: PlanetId = state.planet): number {
@@ -458,7 +541,7 @@ export function tick(state: GameState, dtSec: number, session?: TapSession, now 
       if (row.owned <= 0) continue;
       if (row.manager || !row.running) row.running = true;
       if (!row.running) continue;
-      const cycle = effectiveCycleSec(defs[i].cycleSec, row.owned);
+      const cycle = cycleSecFor(defs[i].cycleSec, row.owned, state.shop?.tempo ?? 0);
       row.progress += dtSec / cycle;
       if (row.progress >= 1) {
         const cycles = Math.floor(row.progress);
@@ -481,12 +564,16 @@ export function tick(state: GameState, dtSec: number, session?: TapSession, now 
   return earned;
 }
 
+export function offlineCapMs(state: GameState): number {
+  return OFFLINE_CAP_MS + SHOP_OFFLINE_MS * (state.shop?.offline ?? 0);
+}
+
 export function applyOffline(
   state: GameState,
   now = Date.now(),
 ): { earned: number; offlineMs: number } {
   const elapsed = Math.max(0, now - (state.lastTs || now));
-  const offlineMs = Math.min(elapsed, OFFLINE_CAP_MS);
+  const offlineMs = Math.min(elapsed, offlineCapMs(state));
   state.lastTs = now;
   if (offlineMs < 1000) return { earned: 0, offlineMs };
   const seconds = offlineMs / 1000;
@@ -596,12 +683,19 @@ export function buy(state: GameState, index: number, mode: BuyMode): number {
   return count;
 }
 
+export function managerPrice(state: GameState, planet: PlanetId, index: number): number {
+  const def = BUSINESSES[planet][index];
+  if (!def) return 0;
+  return def.managerCost * SHOP_MGR_CUT ** (state.shop?.managers ?? 0);
+}
+
 export function hireManager(state: GameState, index: number, planet: PlanetId = state.planet): boolean {
   const def = BUSINESSES[planet][index];
   const row = state.businesses[planet][index];
   if (!def || !row || row.manager || row.owned <= 0) return false;
-  if (state.views < def.managerCost) return false;
-  state.views -= def.managerCost;
+  const cost = managerPrice(state, planet, index);
+  if (state.views < cost) return false;
+  state.views -= cost;
   row.manager = true;
   row.running = true;
   state.stats.managersHired += 1;
@@ -612,9 +706,11 @@ export function canPrestige(state: GameState): boolean {
   return state.viewsThisRun >= state.nextPrestigeAt;
 }
 
-export function prestigeGain(runViews: number): number {
-  if (runViews < PRESTIGE_AT) return 0;
-  return Math.max(0.25, Math.log10(runViews) - 5);
+export function prestigeGain(runViews: number, prestigeCount = 0): number {
+  if (runViews < prestigeThreshold(prestigeCount)) return 0;
+  const over = Math.log10(runViews / PRESTIGE_AT);
+  const raw = (HYPE_BASE + HYPE_LOG * over) / (1 + HYPE_DAMP * prestigeCount);
+  return Math.max(0, Math.round(raw * 10) / 10);
 }
 
 export function nextPlanetName(state: GameState): string {
@@ -625,20 +721,21 @@ export function nextPlanetName(state: GameState): string {
 
 export function prestige(state: GameState): number {
   if (!canPrestige(state)) return 0;
-  const gain = prestigeGain(state.viewsThisRun);
+  const gain = prestigeGain(state.viewsThisRun, state.prestigeCount);
   if (gain <= 0) return 0;
   const hadTiktok = state.tiktokUnlocked;
-  state.prestigeMult += gain;
+  state.hype += gain;
   state.prestigeCount += 1;
   state.tiktokUnlocked = true;
   if (hadTiktok) state.simulationUnlocked = true;
   state.views = 0;
   state.viewsThisRun = 0;
-  state.nextPrestigeAt *= PRESTIGE_SCALE;
+  state.nextPrestigeAt = prestigeThreshold(state.prestigeCount);
   state.planet = state.simulationUnlocked ? "simulation" : "tiktok";
-  state.businesses.youtube = emptyBusinesses("youtube", true);
-  state.businesses.tiktok = emptyBusinesses("tiktok", true);
-  state.businesses.simulation = emptyBusinesses("simulation", state.simulationUnlocked);
+  const copies = starterOwned(state);
+  state.businesses.youtube = emptyBusinesses("youtube", copies);
+  state.businesses.tiktok = emptyBusinesses("tiktok", copies);
+  state.businesses.simulation = emptyBusinesses("simulation", state.simulationUnlocked ? copies : 0);
   return gain;
 }
 
@@ -729,8 +826,8 @@ export function buyScore(state: GameState, index: number, mode: BuyMode): number
   if (row.owned <= 0 && !canUnlock(state, index)) return null;
   const quote = quotedBuy(state, index, mode);
   if (!quote.canBuy || quote.count <= 0 || quote.cost <= 0) return null;
-  const before = potentialVps(state.planet, index, row.owned, totalMult(state));
-  const after = potentialVps(state.planet, index, row.owned + quote.count, totalMult(state));
+  const before = potentialVps(state.planet, index, row.owned, totalMult(state), state.shop?.tempo ?? 0);
+  const after = potentialVps(state.planet, index, row.owned + quote.count, totalMult(state), state.shop?.tempo ?? 0);
   return (after - before) / quote.cost;
 }
 
@@ -810,10 +907,10 @@ export function managerSlots(state: GameState): ManagerSlot[] {
         index,
         name: def.name,
         managerName: def.managerName,
-        cost: def.managerCost,
+        cost: managerPrice(state, planet, index),
         hired: row.manager,
         owned: row.owned,
-        affordable: !row.manager && row.owned > 0 && state.views >= def.managerCost,
+        affordable: !row.manager && row.owned > 0 && state.views >= managerPrice(state, planet, index),
       });
     });
   }
@@ -832,17 +929,20 @@ export function hireAllAffordable(state: GameState): number {
 }
 
 export function canAlgo(state: GameState): boolean {
-  return state.prestigeMult >= ALGO_AT;
+  return state.prestigeCount >= ALGO_PRESTIGE_AT || state.prestigeMult >= ALGO_AT;
 }
 
-export function algoGain(prestigeMult: number): number {
-  if (prestigeMult < ALGO_AT) return 0;
-  return Math.max(0.15, (prestigeMult - 1) * 0.2);
+export function algoGain(prestigeMult: number, prestigeCount = 0): number {
+  const fromViral = Math.max(0, prestigeMult - 1) * 0.2;
+  const fromCount = prestigeCount * 0.08;
+  const gain = Math.max(0.15, fromViral + fromCount);
+  if (prestigeMult < ALGO_AT && prestigeCount < ALGO_PRESTIGE_AT) return 0;
+  return gain;
 }
 
 export function algo(state: GameState): number {
   if (!canAlgo(state)) return 0;
-  const gain = algoGain(state.prestigeMult);
+  const gain = algoGain(state.prestigeMult, state.prestigeCount);
   if (gain <= 0) return 0;
   state.algoMult += gain;
   state.algoCount += 1;
@@ -851,11 +951,12 @@ export function algo(state: GameState): number {
   state.tiktokUnlocked = true;
   state.views = 0;
   state.viewsThisRun = 0;
-  state.nextPrestigeAt = PRESTIGE_AT;
+  state.nextPrestigeAt = prestigeThreshold(state.prestigeCount);
   state.planet = "simulation";
-  state.businesses.youtube = emptyBusinesses("youtube", true);
-  state.businesses.tiktok = emptyBusinesses("tiktok", true);
-  state.businesses.simulation = emptyBusinesses("simulation", true);
+  const copies = starterOwned(state);
+  state.businesses.youtube = emptyBusinesses("youtube", copies);
+  state.businesses.tiktok = emptyBusinesses("tiktok", copies);
+  state.businesses.simulation = emptyBusinesses("simulation", copies);
   return gain;
 }
 
@@ -882,6 +983,8 @@ export type Recap = {
   vps: number;
   prestigeMult: number;
   algoMult: number;
+  shopViral: number;
+  hype: number;
   prestigeCount: number;
   algoCount: number;
   title: string;
@@ -904,6 +1007,8 @@ export function recap(state: GameState): Recap {
     vps: globalViewsPerSec(state),
     prestigeMult: state.prestigeMult,
     algoMult: state.algoMult,
+    shopViral: shopViralMult(state),
+    hype: state.hype,
     prestigeCount: state.prestigeCount,
     algoCount: state.algoCount,
     title: state.title,
@@ -938,6 +1043,41 @@ export function toggleMute(state: GameState): boolean {
   return state.muted;
 }
 
-export function readStorage(storage: Storage = localStorage): GameState {
+export function readStorage(storage: Storage = localStorage, username?: string): GameState {
+  if (username && username.trim()) {
+    return loadGame(storage.getItem(saveKeyFor(username)));
+  }
   return loadGame(storage.getItem(SAVE_KEY));
+}
+
+export function shopItem(id: string) {
+  return HYPE_SHOP.find((row) => row.id === id) ?? null;
+}
+
+export function shopLevel(state: GameState, id: HypeShopId): number {
+  return state.shop?.[id] ?? 0;
+}
+
+export function shopCost(id: HypeShopId, level: number): number {
+  const item = shopItem(id);
+  if (!item) return 0;
+  return item.baseCost * item.costMult ** level;
+}
+
+export function canBuyShop(state: GameState, id: HypeShopId): boolean {
+  const item = shopItem(id);
+  if (!item) return false;
+  const level = shopLevel(state, id);
+  if (level >= item.max) return false;
+  return state.hype >= shopCost(id, level);
+}
+
+export function buyShop(state: GameState, id: string): boolean {
+  const item = shopItem(id);
+  if (!item) return false;
+  if (!canBuyShop(state, item.id)) return false;
+  const cost = shopCost(item.id, shopLevel(state, item.id));
+  state.hype -= cost;
+  state.shop[item.id] += 1;
+  return true;
 }

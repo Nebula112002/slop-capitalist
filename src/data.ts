@@ -22,6 +22,19 @@ export type PlanetDef = {
 
 export type RewardKind = "views" | "mult" | "title";
 
+export type HypeShopId = "viral" | "tempo" | "managers" | "offline" | "starter";
+
+export type ShopLevels = Record<HypeShopId, number>;
+
+export type HypeShopItem = {
+  id: HypeShopId;
+  name: string;
+  blurb: string;
+  max: number;
+  baseCost: number;
+  costMult: number;
+};
+
 export type EventDef = {
   id: string;
   name: string;
@@ -319,8 +332,67 @@ export const MILESTONES = [
 export const SPEED_MARKS = [25, 100, 400, 1000];
 export const SPEED_CUT = 0.5;
 export const PRESTIGE_AT = 1_000_000;
+export const PRESTIGE_TIKTOK_AT = 1_000_000_000;
+export const PRESTIGE_SIM_AT = 1_000_000_000_000_000;
+export const PRESTIGE_LATE_SCALE = 100;
 export const PRESTIGE_SCALE = 10;
+export const HYPE_BASE = 10;
+export const HYPE_LOG = 10;
+export const HYPE_DAMP = 0.5;
+export const SHOP_VIRAL_PER = 0.1;
+export const SHOP_TEMPO_CUT = 0.95;
+export const SHOP_MGR_CUT = 0.92;
+export const SHOP_OFFLINE_MS = 2 * 60 * 60 * 1000;
+export const SHOP_STARTER_EACH = 2;
+export const ALGO_PRESTIGE_AT = 5;
 export const MIN_CYCLE_SEC = 0.25;
+
+export const HYPE_SHOP: HypeShopItem[] = [
+  {
+    id: "viral",
+    name: "Go Viral",
+    blurb: "+10% views per second per rank. The only global multiplier prestige still sells.",
+    max: 20,
+    baseCost: 5,
+    costMult: 1.6,
+  },
+  {
+    id: "tempo",
+    name: "Shorter Bars",
+    blurb: "Cycles 5% faster per rank. Floor is still 0.25s.",
+    max: 10,
+    baseCost: 8,
+    costMult: 1.7,
+  },
+  {
+    id: "managers",
+    name: "Cheap Interns",
+    blurb: "Managers 8% cheaper per rank.",
+    max: 8,
+    baseCost: 6,
+    costMult: 1.65,
+  },
+  {
+    id: "offline",
+    name: "Night Shift",
+    blurb: "+2 hours offline cap per rank (8h → 24h at max).",
+    max: 8,
+    baseCost: 12,
+    costMult: 2,
+  },
+  {
+    id: "starter",
+    name: "Always On",
+    blurb: "+2 starter copies on every farm after each prestige.",
+    max: 5,
+    baseCost: 15,
+    costMult: 2,
+  },
+];
+
+export function emptyShop(): ShopLevels {
+  return { viral: 0, tempo: 0, managers: 0, offline: 0, starter: 0 };
+}
 export const NUDGE_PROGRESS = 0.15;
 export const NUDGE_PER_CYCLE = 4;
 export const NUDGE_COOLDOWN_MS = 200;
@@ -329,7 +401,8 @@ export const CLOUT_PER_VIEWS = 10_000;
 export const ALGO_AT = 3;
 export const CHEST_MIN_MS = 60_000;
 export const CHEST_RATE = 0.25;
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 export const OFFLINE_CAP_MS = 8 * 60 * 60 * 1000;
 export const SAVE_KEY = "slop-capitalist.v1";
 export const UI_ROUTE_KEY = "slop-capitalist.ui";
+export const USER_INDEX_KEY = "slop-capitalist.users";
