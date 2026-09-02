@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 import { BUSINESSES, EVENT_PERIOD_MS, EVENTS, PRESTIGE_AT, SAVE_KEY } from "./data";
 import {
   adviseFarm,
+  algo,
   applyOffline,
   buy,
+  buyBest,
+  buyScore,
   buyCost,
+  canAlgo,
   canPrestige,
+  claimChest,
   claimEventDrop,
   claimEventShop,
   claimPass,
@@ -14,12 +19,16 @@ import {
   defaultSelected,
   effectiveCycleSec,
   extraEventVps,
+  exportSave,
+  hireAllAffordable,
   hireManager,
+  importSave,
   loadGame,
   maxAffordable,
   milestoneMult,
   newGame,
   newTapSession,
+  offerComebackChest,
   parseBuyMode,
   potentialVps,
   prestige,
@@ -547,3 +556,123 @@ describe("event + pass", () => {
     expect(loaded.title).toBe("");
   });
 });
+
+describe("BEST is honest", () => {
+  it("the badged row has the strictly best ΔVPS/cost", () => {
+    const state = newGame();
+    state.views = 5_000;
+    state.businesses.youtube[0].owned = 8;
+    const advice = adviseFarm(state, 1);
+    expect(advice.bestIndex).not.toBeNull();
+    const winner = buyScore(state, advice.bestIndex!, 1);
+    expect(winner).not.toBeNull();
+    for (let i = 0; i < BUSINESSES.youtube.length; i++) {
+      if (i === advice.bestIndex) continue;
+      const score = buyScore(state, i, 1);
+      if (score === null) continue;
+      expect(winner!).toBeGreaterThan(score);
+    }
+  });
+
+  it("never badges a locked or unaffordable row as BEST", () => {
+    const state = newGame();
+    state.views = 50;
+    const advice = adviseFarm(state, 1);
+    expect(advice.bestIndex).toBe(0);
+    expect(buyScore(state, 2, 1)).toBeNull();
+    expect(advice.badges[2]).not.toBe("best");
+  });
+
+  it("RANK into a milestone beats dumping into a worse ROI row", () => {
+    const state = newGame();
+    state.businesses.youtube[0].owned = 24;
+    state.businesses.youtube[1].owned = 1;
+    state.views = 10_000;
+    const rankAdvice = adviseFarm(state, "rank");
+    const s0 = buyScore(state, 0, "rank");
+    const s1 = buyScore(state, 1, "rank");
+    expect(s0).not.toBeNull();
+    expect(s1).not.toBeNull();
+    expect(rankAdvice.bestIndex).toBe(s0! >= s1! ? 0 : 1);
+    expect(buyScore(state, rankAdvice.bestIndex!, "rank")).toBe(Math.max(s0!, s1!));
+  });
+
+  it("buyBest purchases exactly the winning row", () => {
+    const state = newGame();
+    state.views = 80;
+    const advice = adviseFarm(state, 1);
+    const before = state.businesses.youtube.map((row) => row.owned);
+    const result = buyBest(state, 1);
+    expect(result).not.toBeNull();
+    expect(result!.index).toBe(advice.bestIndex);
+    expect(state.businesses.youtube[result!.index].owned).toBe(before[result!.index] + result!.count);
+    for (let i = 0; i < before.length; i++) {
+      if (i === result!.index) continue;
+      expect(state.businesses.youtube[i].owned).toBe(before[i]);
+    }
+  });
+});
+
+describe("hire all + extras", () => {
+  it("hires every affordable manager cheapest first", () => {
+    const state = newGame();
+    state.businesses.youtube[0].owned = 1;
+    state.businesses.youtube[1].owned = 1;
+    state.views = 16_000;
+    const n = hireAllAffordable(state);
+    expect(n).toBe(2);
+    expect(state.businesses.youtube[0].manager).toBe(true);
+    expect(state.businesses.youtube[1].manager).toBe(true);
+    expect(state.views).toBe(16_000 - 1_000 - 15_000);
+  });
+
+  it("opens a comeback chest after a long away and claims it once", () => {
+    const state = newGame(1_000);
+    state.businesses.youtube[0].manager = true;
+    state.businesses.youtube[0].running = true;
+    state.lastTs = 1_000;
+    const { earned, offlineMs } = applyOffline(state, 1_000 + 120_000);
+    const chest = offerComebackChest(state, earned, offlineMs);
+    expect(chest).toBeGreaterThan(0);
+    expect(state.pendingChest?.views).toBe(chest);
+    const claimed = claimChest(state);
+    expect(claimed).toBe(chest);
+    expect(claimChest(state)).toBe(0);
+  });
+
+  it("locks algo until viral is high, then resets viral and keeps algo", () => {
+    const state = newGame();
+    expect(canAlgo(state)).toBe(false);
+    expect(algo(state)).toBe(0);
+    state.prestigeMult = 3;
+    expect(canAlgo(state)).toBe(true);
+    const gain = algo(state);
+    expect(gain).toBeGreaterThan(0);
+    expect(state.prestigeMult).toBe(1);
+    expect(state.algoMult).toBeGreaterThan(1);
+    expect(state.simulationUnlocked).toBe(true);
+    expect(canAlgo(state)).toBe(false);
+    expect(algo(state)).toBe(0);
+  });
+
+  it("exports and imports the same farm", () => {
+    const state = newGame();
+    state.views = 1234;
+    state.prestigeMult = 2.5;
+    const raw = exportSave(state);
+    const loaded = importSave(raw);
+    expect(loaded).not.toBeNull();
+    expect(loaded!.views).toBe(1234);
+    expect(loaded!.prestigeMult).toBe(2.5);
+    expect(importSave("nope")).toBeNull();
+  });
+
+  it("keeps this-run prestige lock after extras", () => {
+    const state = newGame();
+    state.viewsThisRun = PRESTIGE_AT;
+    prestige(state);
+    expect(canPrestige(state)).toBe(false);
+    expect(prestige(state)).toBe(0);
+  });
+});
+

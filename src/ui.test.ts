@@ -2,15 +2,20 @@
 import { describe, expect, it } from "vitest";
 import { PRESTIGE_AT } from "./data";
 import { hireManager, newGame, prestige, quotedBuy } from "./game";
-import { buyButtonText, renderApp, type UiHandlers } from "./ui";
+import { bestButtonText, buyButtonText, renderApp, type UiHandlers } from "./ui";
+import { adviseFarm } from "./game";
 
 const noop: UiHandlers = {
+  onBuyBest() {},
   onBuy() {},
   onRun() {},
   onManager() {},
+  onHireAll() {},
   onPlanet() {},
   onPrestigeAsk() {},
   onPrestigeConfirm() {},
+  onAlgoAsk() {},
+  onAlgoConfirm() {},
   onSheetClose() {},
   onBuyMode() {},
   onSelect() {},
@@ -20,6 +25,13 @@ const noop: UiHandlers = {
   onClaimDrop() {},
   onClaimEvent() {},
   onClaimPass() {},
+  onClaimChest() {},
+  onMute() {},
+  onExport() {},
+  onImportAsk() {},
+  onImport() {},
+  onRecap() {},
+  onDismissTip() {},
   onOverflow() {},
   onReset() {},
 };
@@ -44,7 +56,7 @@ describe("chrome + views", () => {
     expect(root.textContent).toContain("SIM");
   });
 
-  it("shows BEST and LOCK on the outside farm", () => {
+  it("shows BEST and LOCK on the outside farm plus a Buy BEST dock", () => {
     const root = document.createElement("div");
     const state = newGame();
     state.views = 80;
@@ -52,6 +64,9 @@ describe("chrome + views", () => {
     expect(root.textContent).toContain("BEST");
     expect(root.textContent).toContain("LOCK");
     expect(root.querySelector("[data-row='0']")?.classList.contains("is-on")).toBe(true);
+    expect(root.querySelector("[data-buy-best]")).toBeTruthy();
+    expect(root.textContent).toContain("Buy BEST");
+    expect(root.querySelector("[data-enter]")?.textContent).toContain("Open");
   });
 
   it("lists The Simulation on the outside planet row once unlocked", () => {
@@ -78,6 +93,7 @@ describe("chrome + views", () => {
     renderApp(root, state, 1, { screen: "outside", selected: 0, tab: "managers" }, null, noop);
     expect(root.textContent).toContain("Managers");
     expect(root.querySelector("[data-hire]")).toBeTruthy();
+    expect(root.querySelector("[data-hire-all]")).toBeTruthy();
     expect(root.textContent).toContain("Hire a thumbnail gremlin");
     expect(hireManager(state, 0)).toBe(true);
     expect(state.businesses.youtube[0].manager).toBe(true);
@@ -105,5 +121,13 @@ describe("chrome + views", () => {
     expect(quote.count).toBeLessThan(5);
     const label = buyButtonText(quote, "rank");
     expect(label.startsWith("Rank ")).toBe(true);
+  });
+
+  it("Buy BEST label names the winning row", () => {
+    const state = newGame();
+    state.views = 80;
+    const advice = adviseFarm(state, 1);
+    expect(advice.bestIndex).toBe(0);
+    expect(bestButtonText(state, 1, advice)).toContain("Cursed Short");
   });
 });

@@ -221,7 +221,7 @@ const handlers: UiHandlers = {
     rebuild();
     showToast("Fresh account. Post your first cursed short.");
   },
-  onDockTab(tab) {
+  onTab(tab) {
     view = { ...view, tab };
     rebuild();
   },
@@ -233,7 +233,7 @@ const handlers: UiHandlers = {
     playJuice("claim", state.muted);
     showToast(`Event drop +${formatNum(views)}`);
   },
-  onClaimShop(id) {
+  onClaimEvent(id) {
     const item = claimEventShop(state, id);
     if (!item) return;
     persist(state);

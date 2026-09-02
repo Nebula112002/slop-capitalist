@@ -438,15 +438,86 @@ function renderSheet(state: GameState, sheet: UiSheet): string {
       </div>
     `;
   }
+  if (sheet === "algo") {
+    const gain = algoGain(state.prestigeMult).toFixed(2);
+    return `
+      <div class="sheet is-on" data-sheet>
+        <div class="sheet-card">
+          <strong>Enter the algorithm?</strong>
+          <p>Second layer. Viral resets to 1.00x. Keep +${gain}x Algo. The Simulation stays open.</p>
+          <div class="sheet-actions">
+            <button class="ghost-lite" data-sheet-close>Cancel</button>
+            <button class="ghost" data-algo-go>Algo</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  if (sheet === "chest") {
+    const chest = state.pendingChest;
+    return `
+      <div class="sheet is-on" data-sheet>
+        <div class="sheet-card">
+          <strong>Comeback chest</strong>
+          <p>Away ${chest ? formatTime(chest.offlineMs) : "a bit"}. Bonus ${chest ? formatNum(chest.views) : "0"} views. Local only.</p>
+          <div class="sheet-actions">
+            <button class="ghost-lite" data-sheet-close>Later</button>
+            <button class="ghost" data-claim-chest>Open chest</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  if (sheet === "recap") {
+    const snap = recap(state);
+    return `
+      <div class="sheet is-on" data-sheet>
+        <div class="sheet-card">
+          <strong>Recap</strong>
+          <p>
+            Lifetime ${formatNum(snap.lifetimeViews)} · this run ${formatNum(snap.viewsThisRun)}<br>
+            Viral ${snap.prestigeMult.toFixed(2)}x · Algo ${snap.algoMult.toFixed(2)}x<br>
+            Prestiges ${snap.prestigeCount} · Algos ${snap.algoCount} · managers ${snap.managers}<br>
+            Play ${formatTime(snap.playMs)} · chests ${snap.chests}
+            ${snap.title ? `<br>Title: ${snap.title}` : ""}
+          </p>
+          <div class="sheet-actions">
+            <button class="ghost-lite" data-sheet-close>Close</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  if (sheet === "import") {
+    return `
+      <div class="sheet is-on" data-sheet>
+        <div class="sheet-card">
+          <strong>Import save</strong>
+          <p>Paste a JSON export. Local only. No money. This replaces the current farm.</p>
+          <textarea id="import-box" class="save-box" rows="6" placeholder="{ ... }"></textarea>
+          <div class="sheet-actions">
+            <button class="ghost-lite" data-sheet-close>Cancel</button>
+            <button class="ghost" data-import-go>Import</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
   if (sheet === "settings") {
     return `
       <div class="sheet is-on" data-sheet>
         <div class="sheet-card">
           <strong>Slop Capitalist</strong>
-          <p>One cursed short. Then the whole internet. Local only. Lives on this PC.</p>
+          <p>One cursed short. Then the whole internet. Local only. Lives on this PC. No IAP.</p>
+          <div class="sheet-stack">
+            <button class="ghost-lite" data-mute>${state.muted ? "Unmute juice" : "Mute juice"}</button>
+            <button class="ghost-lite" data-recap>Stats / recap</button>
+            <button class="ghost-lite" data-export>Copy export</button>
+            <button class="ghost-lite" data-import-ask>Import save</button>
+            <button class="texty" data-reset>Reset save</button>
+          </div>
           <div class="sheet-actions">
             <button class="ghost-lite" data-sheet-close>Close</button>
-            <button class="texty" data-reset>Reset save</button>
           </div>
         </div>
       </div>
@@ -517,6 +588,10 @@ export function renderApp(
             <span class="label">Viral</span>
             <em id="mult">${state.prestigeMult.toFixed(2)}x</em>
           </div>
+          <div>
+            <span class="label">Algo</span>
+            <em id="algo">${state.algoMult.toFixed(2)}x</em>
+          </div>
         </div>
         <div class="goal">
           <div class="goal-copy">
@@ -525,6 +600,7 @@ export function renderApp(
           </div>
           <div class="goal-track" aria-hidden="true"><i id="goal-bar" style="width:${goal.pct}%"></i></div>
           <button class="ghost" data-prestige ${goal.ready ? "" : "disabled"}>Prestige</button>
+          <button class="ghost-lite" data-algo ${canAlgo(state) ? "" : "disabled"}>Algo</button>
           <nav class="planets" aria-label="Planets">${renderPlanetChips(state)}</nav>
         </div>
         <div class="pips">
@@ -532,7 +608,15 @@ export function renderApp(
           <p id="pass-pip">${passPip(state)}</p>
         </div>
       </header>
-      <main class="camera">${camera}</main>
+      <main class="camera">${camera}${
+        state.seenTooltip
+          ? ""
+          : `<div class="tip" data-tip>
+              <strong>Farm is home.</strong>
+              <p>Buy BEST spends on the real best row. Open a card only if you want flavor or an optional tap. Hire from Mgrs — Hire all when you can.</p>
+              <button class="ghost" data-dismiss-tip>Got it</button>
+            </div>`
+      }</main>
       <footer class="chrome-bot">
         <div id="toast-slot" class="toast-slot" role="status"></div>
         <nav class="dock-tabs" aria-label="Dock">${renderDockTabs(view.tab)}</nav>
@@ -567,12 +651,26 @@ function bindChrome(root: HTMLElement, view: UiView, handlers: UiHandlers): void
   });
   root.querySelector("[data-prestige]")?.addEventListener("click", handlers.onPrestigeAsk);
   root.querySelector("[data-prestige-go]")?.addEventListener("click", handlers.onPrestigeConfirm);
+  root.querySelector("[data-algo]")?.addEventListener("click", handlers.onAlgoAsk);
+  root.querySelector("[data-algo-go]")?.addEventListener("click", handlers.onAlgoConfirm);
   root.querySelector("[data-sheet-close]")?.addEventListener("click", handlers.onSheetClose);
   root.querySelector("[data-overflow]")?.addEventListener("click", handlers.onOverflow);
   root.querySelector("[data-reset]")?.addEventListener("click", handlers.onReset);
   root.querySelector("[data-farm]")?.addEventListener("click", handlers.onFarm);
+  root.querySelector("[data-buy-best]")?.addEventListener("click", handlers.onBuyBest);
   root.querySelector("[data-dock-buy]")?.addEventListener("click", () => handlers.onBuy(view.selected));
   root.querySelector("[data-dock-mgr]")?.addEventListener("click", () => handlers.onManager(view.selected));
+  root.querySelector("[data-hire-all]")?.addEventListener("click", handlers.onHireAll);
+  root.querySelector("[data-claim-chest]")?.addEventListener("click", handlers.onClaimChest);
+  root.querySelector("[data-mute]")?.addEventListener("click", handlers.onMute);
+  root.querySelector("[data-export]")?.addEventListener("click", handlers.onExport);
+  root.querySelector("[data-import-ask]")?.addEventListener("click", handlers.onImportAsk);
+  root.querySelector("[data-recap]")?.addEventListener("click", handlers.onRecap);
+  root.querySelector("[data-dismiss-tip]")?.addEventListener("click", handlers.onDismissTip);
+  root.querySelector("[data-import-go]")?.addEventListener("click", () => {
+    const box = root.querySelector<HTMLTextAreaElement>("#import-box");
+    handlers.onImport(box?.value ?? "");
+  });
   root.querySelector("[data-claim-drop]")?.addEventListener("click", handlers.onClaimDrop);
   root.querySelectorAll<HTMLButtonElement>("[data-claim-event]").forEach((btn) => {
     btn.addEventListener("click", () => handlers.onClaimEvent(btn.dataset.claimEvent ?? ""));
@@ -610,10 +708,12 @@ function patchGoal(root: HTMLElement, state: GameState): void {
   const detail = root.querySelector("#goal-detail");
   const bar = root.querySelector<HTMLElement>("#goal-bar");
   const btn = root.querySelector<HTMLButtonElement>("[data-prestige]");
+  const algoBtn = root.querySelector<HTMLButtonElement>("[data-algo]");
   if (title) title.textContent = goal.title;
   if (detail) detail.textContent = goal.detail;
   if (bar) bar.style.width = `${goal.pct}%`;
   if (btn) btn.disabled = !goal.ready;
+  if (algoBtn) algoBtn.disabled = !canAlgo(state);
 }
 
 function patchOutsideRows(root: HTMLElement, state: GameState, buyMode: BuyMode, selected: number): void {
@@ -743,9 +843,11 @@ export function patchMeters(
   const views = root.querySelector("#views");
   const vps = root.querySelector("#vps");
   const mult = root.querySelector("#mult");
+  const algo = root.querySelector("#algo");
   if (views) views.textContent = formatNum(state.views);
   if (vps) vps.textContent = `${formatNum(globalViewsPerSec(state, clock))}/s`;
   if (mult) mult.textContent = `${state.prestigeMult.toFixed(2)}x`;
+  if (algo) algo.textContent = `${state.algoMult.toFixed(2)}x`;
   patchGoal(root, state);
   const eventEl = root.querySelector("#event-pip");
   const passEl = root.querySelector("#pass-pip");
@@ -760,12 +862,18 @@ export function patchMeters(
 
   const dockBuy = root.querySelector<HTMLButtonElement>("[data-dock-buy]");
   const dockMgr = root.querySelector<HTMLButtonElement>("[data-dock-mgr]");
+  const bestBtn = root.querySelector<HTMLButtonElement>("[data-buy-best]");
   const def = BUSINESSES[state.planet][view.selected];
   const row = state.businesses[state.planet][view.selected];
+  if (bestBtn && view.tab === "buy" && view.screen === "outside") {
+    const advice = adviseFarm(state, buyMode);
+    bestBtn.disabled = advice.bestIndex === null;
+    bestBtn.textContent = bestButtonText(state, buyMode, advice);
+  }
   if (def && row && dockBuy) {
     const quote = quotedBuy(state, view.selected, buyMode);
     dockBuy.disabled = !quote.canBuy;
-    dockBuy.textContent = buyButtonText(quote, buyMode, view.screen === "outside" ? def.name : undefined);
+    dockBuy.textContent = buyButtonText(quote, buyMode);
   }
   if (def && row && dockMgr && !row.manager) {
     dockMgr.disabled = row.owned <= 0 || state.views < def.managerCost;
