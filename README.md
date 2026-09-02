@@ -6,6 +6,7 @@ AdVenture Capitalist loop, content-farm costume. Browser toy that can grow into 
 
 **Home:** this folder on the PC. **Port:** `8896`. Not the warehouse. Never `:3000`.
 
+**GitHub:** [Nebula112002/slop-capitalist](https://github.com/Nebula112002/slop-capitalist)  
 Own git repo. Do **not** fold into [d-ai](https://github.com/Nebula112002/d-ai).
 
 ## Play
