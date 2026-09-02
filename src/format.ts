@@ -39,3 +39,10 @@ export function formatTime(ms: number): string {
   const hr = Math.floor(min / 60);
   return `${hr}h ${min % 60}m`;
 }
+
+export function formatCycle(sec: number): string {
+  if (!Number.isFinite(sec) || sec <= 0) return "0s";
+  if (Math.abs(sec - Math.round(sec)) < 0.005) return `${Math.round(sec)}s`;
+  if (sec >= 10) return `${sec.toFixed(1)}s`;
+  return `${sec.toFixed(2)}s`;
+}

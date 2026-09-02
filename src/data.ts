@@ -167,5 +167,12 @@ export const MILESTONES = [
 ];
 
 export const PRESTIGE_AT = 1_000_000;
+export const PRESTIGE_SCALE = 10;
+export const MIN_CYCLE_SEC = 0.25;
+export const SPEED_PER_RANK = 0.75;
+export const NUDGE_PROGRESS = 0.15;
+export const NUDGE_PER_CYCLE = 4;
+export const NUDGE_COOLDOWN_MS = 200;
+export const SAVE_VERSION = 2;
 export const OFFLINE_CAP_MS = 8 * 60 * 60 * 1000;
 export const SAVE_KEY = "slop-capitalist.v1";

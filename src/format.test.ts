@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatNum, formatTime } from "./format";
+import { formatCycle, formatNum, formatTime } from "./format";
 
 describe("formatNum", () => {
   it("keeps small numbers readable", () => {
@@ -20,5 +20,13 @@ describe("formatTime", () => {
     expect(formatTime(45_000)).toBe("45s");
     expect(formatTime(125_000)).toBe("2m 5s");
     expect(formatTime(3_600_000)).toBe("1h 0m");
+  });
+});
+
+describe("formatCycle", () => {
+  it("keeps rank times readable", () => {
+    expect(formatCycle(0.6)).toBe("0.60s");
+    expect(formatCycle(0.45)).toBe("0.45s");
+    expect(formatCycle(24)).toBe("24s");
   });
 });
