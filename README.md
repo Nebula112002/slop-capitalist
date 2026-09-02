@@ -11,18 +11,22 @@ Own git repo. Do **not** fold into [d-ai](https://github.com/Nebula112002/d-ai).
 
 ## Play
 
+Double-click `START.bat`, or:
+
 ```powershell
 cd D:\AI\slop-capitalist
-.\scripts\start.ps1
+.\scripts\start.ps1 -Open
 ```
 
 Local: http://127.0.0.1:8896  
 Tailnet: https://calebscomputer.tailfdadcb.ts.net:8896
 
+The PC watchdog can keep it up via `D:\AI\scripts\ensure-slop-capitalist.ps1`.
+
 Dev (hot reload):
 
 ```powershell
-.\scripts\start.ps1 -Dev
+.\scripts\start.ps1 -Dev -Open
 ```
 
 Stop: `.\scripts\stop.ps1`
